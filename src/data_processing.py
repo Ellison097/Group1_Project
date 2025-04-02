@@ -9,6 +9,7 @@ import os
 import json
 import time
 import requests
+from tqdm import tqdm
 
 # 设置日志
 logging.basicConfig(
@@ -242,7 +243,7 @@ def process_api_data():
         deduplicate_self.to_csv("data/processed/deduplicate_self.csv", index=False)
         
         # 3. 读取cleaned_biblio.csv
-        cleaned_biblio = pd.read_csv("data/raw/cleaned_biblio.csv")
+        cleaned_biblio = pd.read_csv("data/processed/cleaned_biblio.csv")
         logger.info(f"读取cleaned_biblio.csv，共 {len(cleaned_biblio)} 条记录")
         
         # 4. 使用模糊匹配进行去重
@@ -414,32 +415,198 @@ def check_duplicates_with_research_outputs(scraped_data: pd.DataFrame, research_
     
     return deduplicated_data
 
-def process_data():
-    """主处理函数"""
-    try:
-        # 1. 处理API数据
-        api_data = process_api_data()
+def check_duplicates_between_sources(web_data: pd.DataFrame, api_data: pd.DataFrame) -> pd.DataFrame:
+    """
+    检查web数据和API数据之间的重复，使用精确匹配和模糊匹配，并智能合并列
+    
+    Args:
+        web_data: web爬取的数据
+        api_data: API获取的数据
+    
+    Returns:
+        去重后的DataFrame
+    """
+    logger.info("开始检查web数据和API数据之间的重复...")
+    
+    # 打印两个数据集的列名和示例数据
+    logger.info("\nWeb数据列名和示例:")
+    logger.info(f"列名: {web_data.columns.tolist()}")
+    logger.info("\n前3行数据示例:")
+    logger.info(web_data.head(3).to_string())
+    
+    logger.info("\nAPI数据列名和示例:")
+    logger.info(f"列名: {api_data.columns.tolist()}")
+    logger.info("\n前3行数据示例:")
+    logger.info(api_data.head(3).to_string())
+    
+    # 分析可能的列名对应关系
+    def find_similar_columns(df1_cols, df2_cols, threshold=80):
+        """查找相似的列名"""
+        similar_cols = {}
+        for col1 in df1_cols:
+            for col2 in df2_cols:
+                similarity = fuzz.ratio(str(col1).lower(), str(col2).lower())
+                if similarity >= threshold:
+                    similar_cols[col1] = col2
+        return similar_cols
+    
+    similar_columns = find_similar_columns(web_data.columns, api_data.columns)
+    logger.info("\n可能的列名对应关系:")
+    for web_col, api_col in similar_columns.items():
+        logger.info(f"{web_col} <-> {api_col}")
+    
+    # 确保两个DataFrame都有必要的列
+    required_columns = ['title', 'authors']
+    for col in required_columns:
+        if col not in web_data.columns or col not in api_data.columns:
+            logger.error(f"缺少必要的列: {col}")
+            return pd.concat([web_data, api_data], ignore_index=True)
+    
+    def is_similar(title1, title2, threshold=80):
+        """比较两个标题的相似度"""
+        if pd.isna(title1) or pd.isna(title2):
+            return False
+        return fuzz.ratio(str(title1).lower(), str(title2).lower()) >= threshold
+    
+    def authors_overlap(authors1, authors2):
+        """检查作者是否有重叠"""
+        if pd.isna(authors1) or pd.isna(authors2):
+            return False
+        authors1 = set(str(authors1).lower().split(', '))
+        authors2 = set(str(authors2).lower().split(', '))
+        return bool(authors1.intersection(authors2))
+    
+    # 创建标记列表
+    keep_rows = []
+    
+    # 检查每个web数据条目
+    for idx, web_row in web_data.iterrows():
+        # 默认保留该行
+        keep = True
+        current_title = web_row["title"]
+        current_authors = web_row["authors"]
         
-        # 2. 读取爬取的数据
-        logger.info("开始读取爬取数据...")
-        scraped_data = pd.read_csv('data/processed/scraped_data.csv')
-        logger.info(f"成功读取爬取数据，共 {len(scraped_data)} 条记录")
+        # 与API数据中的每个条目比较
+        for _, api_row in api_data.iterrows():
+            api_title = api_row["title"]
+            api_authors = api_row["authors"]
+            
+            # 如果标题相似或作者有重叠，标记为不保留
+            if is_similar(current_title, api_title) or authors_overlap(current_authors, api_authors):
+                keep = False
+                break
         
-        # 3. 读取ResearchOutputs.xlsx
-        research_outputs = pd.read_excel('data/raw/ResearchOutputs.xlsx')
-        logger.info(f"成功读取ResearchOutputs.xlsx，共 {len(research_outputs)} 条记录")
-        
-        # 4. 检查并去除重复数据
-        deduplicated_data = check_duplicates_with_research_outputs(scraped_data, research_outputs)
-        
-        # 5. 保存去重后的数据
-        output_file = 'data/processed/deduplicated_scraped_data.csv'
+        keep_rows.append(keep)
+    
+    # 使用标记列表过滤web数据
+    web_data_filtered = web_data[keep_rows].reset_index(drop=True)
+    
+    # 智能合并列
+    # 1. 找出共同的列
+    common_columns = list(set(web_data_filtered.columns) & set(api_data.columns))
+    logger.info(f"\n共同列: {common_columns}")
+    
+    # 2. 找出web数据独有的列
+    web_only_columns = list(set(web_data_filtered.columns) - set(api_data.columns))
+    logger.info(f"Web数据独有列: {web_only_columns}")
+    
+    # 3. 找出API数据独有的列
+    api_only_columns = list(set(api_data.columns) - set(web_data_filtered.columns))
+    logger.info(f"API数据独有列: {api_only_columns}")
+    
+    # 4. 创建合并后的DataFrame
+    merged_data = pd.DataFrame()
+    
+    # 5. 添加共同列（优先使用API数据中的值）
+    for col in common_columns:
+        merged_data[col] = api_data[col]
+        # 对于web数据中独有的行，使用web数据的值
+        merged_data.loc[web_data_filtered.index, col] = web_data_filtered[col]
+    
+    # 6. 添加web数据独有的列
+    for col in web_only_columns:
+        merged_data[col] = web_data_filtered[col]
+        # 对于API数据中的行，填充空值
+        merged_data.loc[api_data.index, col] = None
+    
+    # 7. 添加API数据独有的列
+    for col in api_only_columns:
+        merged_data[col] = api_data[col]
+        # 对于web数据中的行，填充空值
+        merged_data.loc[web_data_filtered.index, col] = None
+    
+    # 记录去重结果
+    logger.info(f"\nWeb数据原始量: {len(web_data)}")
+    logger.info(f"API数据原始量: {len(api_data)}")
+    logger.info(f"去重后Web数据量: {len(web_data_filtered)}")
+    logger.info(f"最终合并数据量: {len(merged_data)}")
+    
+    # 保存重复数据到单独的文件
+    duplicate_data = web_data[~web_data.index.isin(web_data_filtered.index)]
+    if not duplicate_data.empty:
+        output_file = 'data/processed/web_api_duplicates.csv'
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        deduplicated_data.to_csv(output_file, index=False)
-        logger.info(f"去重后的数据已保存到 {output_file}")
+        duplicate_data.to_csv(output_file, index=False)
+        logger.info(f"重复数据已保存到 {output_file}")
+    
+    # 保存列名信息
+    column_info = {
+        'common_columns': common_columns,
+        'web_only_columns': web_only_columns,
+        'api_only_columns': api_only_columns,
+        'similar_columns': similar_columns
+    }
+    with open('data/processed/column_info.json', 'w') as f:
+        json.dump(column_info, f, indent=4)
+    
+    return merged_data
+
+def process_data():
+    """
+    主处理函数
+    """
+    try:
+        # 1. 读取ResearchOutputs.xlsx
+        logger.info("正在读取ResearchOutputs.xlsx...")
+        research_outputs = pd.read_excel('data/raw/ResearchOutputs.xlsx')
+        logger.info(f"ResearchOutputs.xlsx数据量: {len(research_outputs)}")
+        
+        # 2. 读取web scraping数据并去重
+        logger.info("正在读取web scraping数据...")
+        web_data = pd.read_csv('data/processed/scraped_data.csv')
+        logger.info(f"Web scraping原始数据量: {len(web_data)}")
+        
+        # 对web scraping数据进行去重
+        web_data_deduped = check_duplicates_with_research_outputs(web_data, research_outputs)
+        logger.info(f"Web scraping去重后数据量: {len(web_data_deduped)}")
+        
+        # 3. 处理API数据（包含关键词去重）
+        logger.info("开始处理API数据...")
+        api_data_deduped = process_api_data()
+        logger.info(f"API去重后数据量: {len(api_data_deduped)}")
+        
+        # 4. 检查web数据和API数据之间的重复
+        logger.info("正在检查web数据和API数据之间的重复...")
+        combined_data = check_duplicates_between_sources(web_data_deduped, api_data_deduped)
+        logger.info(f"合并去重后数据量: {len(combined_data)}")
+        
+        # 5. 保存最终结果
+        output_file = 'data/processed/final_combined_data.csv'
+        combined_data.to_csv(output_file, index=False)
+        logger.info(f"已保存最终结果到: {output_file}")
+        
+        # 6. 打印详细的统计信息
+        logger.info("\n数据处理统计:")
+        logger.info(f"1. ResearchOutputs.xlsx数据量: {len(research_outputs)}")
+        logger.info(f"2. Web scraping原始数据量: {len(web_data)}")
+        logger.info(f"3. Web scraping去重后数据量: {len(web_data_deduped)}")
+        logger.info(f"4. API去重后数据量: {len(api_data_deduped)}")
+        logger.info(f"5. 最终合并去重后数据量: {len(combined_data)}")
+        
+        logger.info("数据处理完成！")
         
     except Exception as e:
-        logger.error(f"处理数据时出错: {str(e)}")
+        logger.error(f"数据处理过程中发生错误: {str(e)}")
         raise
 
 if __name__ == "__main__":
