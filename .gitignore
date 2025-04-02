@@ -34,12 +34,28 @@ ENV/
 # Logs
 *.log
 
-# Data files
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Data files
+# Allow specific data files
+!data/processed/cleaned_biblio.csv
+!data/processed/deduplicate_self.csv
+!data/processed/deduplicated_scraped_data.csv
+!data/processed/duplicate_data.csv
+!data/processed/duplicate_entries.csv
+!data/processed/failed_projects.csv
+!data/processed/final_combined_data.csv
+!data/processed/final_deduped_data.csv
+!data/processed/final_deduped_data_withkeyword.csv
+!data/processed/fsrdc5_related_papers_api_all.csv
+!data/processed/research_outputs_1735_4.csv
+!data/processed/scraped_data.csv
+!data/processed/scraped_data_intermediate.csv
+!data/raw/ProjectsAllMetadata.xlsx
+!data/raw/ResearchOutputs.xlsx
+
+# Other data files are still ignored
+data/raw/*
+data/processed/* 
