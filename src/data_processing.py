@@ -10,8 +10,9 @@ import json
 import time
 import requests
 from tqdm import tqdm
+import csv
 
-# 设置日志
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -24,13 +25,13 @@ logger = logging.getLogger(__name__)
 
 class DataProcessor:
     def __init__(self):
-        self.threshold = 85  # 模糊匹配阈值
+        self.threshold = 85  # Fuzzy matching threshold
         
-        # 加载已有的研究成果
+        # Load existing research outputs
         self.existing_outputs = self._load_existing_outputs()
 
     def _load_existing_outputs(self) -> pd.DataFrame:
-        """加载已有的研究成果数据"""
+        """Load existing research outputs data"""
         try:
             return pd.read_excel('data/raw/ResearchOutputs.xlsx')
         except Exception as e:
@@ -38,34 +39,34 @@ class DataProcessor:
             return pd.DataFrame()
 
     def _clean_text(self, text: str) -> str:
-        """清理文本数据"""
+        """Clean text data"""
         if pd.isna(text):
             return ""
-        # 转换为小写
+        # Convert to lowercase
         text = str(text).lower()
-        # 移除特殊字符
+        # Remove special characters
         text = re.sub(r'[^\w\s]', ' ', text)
-        # 移除多余空格
+        # Remove extra spaces
         text = ' '.join(text.split())
         return text
 
     def _check_uniqueness(self, title: str) -> bool:
-        """检查研究产出是否在2024年数据集中"""
+        """Check if research output exists in 2024 dataset"""
         if self.existing_outputs.empty:
             return True
         
         cleaned_title = self._clean_text(title)
         for _, row in self.existing_outputs.iterrows():
             existing_title = self._clean_text(row['OutputTitle'])
-            # 使用模糊匹配
+            # Use fuzzy matching
             similarity = fuzz.ratio(cleaned_title, existing_title)
             if similarity >= self.threshold:
                 return False
         return True
 
     def _validate_fsrdc_criteria(self, row: pd.Series) -> bool:
-        """验证FSRDC标准"""
-        # 检查是否满足任一标准
+        """Validate FSRDC criteria"""
+        # Check if any criteria is met
         criteria_columns = [
             'acknowledgments',
             'data_descriptions',
@@ -77,8 +78,8 @@ class DataProcessor:
         return any(row[col] for col in criteria_columns if col in row)
 
     def _merge_data(self, scraped_data: pd.DataFrame, api_data: pd.DataFrame) -> pd.DataFrame:
-        """合并爬虫数据和API数据"""
-        # 基于标题进行合并
+        """Merge scraped data and API data"""
+        # Merge based on title
         merged_data = pd.merge(
             scraped_data,
             api_data,
@@ -89,17 +90,17 @@ class DataProcessor:
         return merged_data
 
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """清理数据"""
-        # 删除重复行
+        """Clean data"""
+        # Remove duplicate rows
         df = df.drop_duplicates(subset=['title'])
         
-        # 清理文本列
+        # Clean text columns
         text_columns = ['title', 'abstract', 'authors']
         for col in text_columns:
             if col in df.columns:
                 df[col] = df[col].apply(self._clean_text)
         
-        # 处理缺失值
+        # Handle missing values
         df = df.fillna({
             'abstract': '',
             'authors': '[]',
@@ -109,45 +110,45 @@ class DataProcessor:
         return df
 
     def process(self, scraped_data: pd.DataFrame, api_data: pd.DataFrame) -> pd.DataFrame:
-        """处理数据并生成最终数据集"""
-        # 合并数据
+        """Process data and generate final dataset"""
+        # Merge data
         merged_data = self._merge_data(scraped_data, api_data)
         
-        # 清理数据
+        # Clean data
         cleaned_data = self._clean_data(merged_data)
         
-        # 验证唯一性和FSRDC标准
+        # Validate uniqueness and FSRDC criteria
         final_data = []
         for _, row in cleaned_data.iterrows():
             if self._check_uniqueness(row['title']) and self._validate_fsrdc_criteria(row):
                 final_data.append(row)
         
-        # 转换为DataFrame
+        # Convert to DataFrame
         final_df = pd.DataFrame(final_data)
         
-        # 保存处理后的数据
+        # Save processed data
         final_df.to_csv('data/processed/final_research_outputs.csv', index=False)
         
-        # 输出统计信息
+        # Output statistics
         logger.info(f"Total records processed: {len(cleaned_data)}")
         logger.info(f"Unique records after processing: {len(final_df)}")
         
         return final_df
 
     def _is_duplicate(self, title: str, authors: List[str]) -> bool:
-        """检查是否是重复的研究成果"""
+        """Check if research output is duplicate"""
         if self.existing_outputs.empty:
             return False
             
-        # 使用模糊匹配检查标题
+        # Use fuzzy matching to check title
         title_similarities = [fuzz.ratio(title.lower(), t.lower()) 
                             for t in self.existing_outputs['Title']]
         
-        # 如果标题相似度超过85%，认为是重复
+        # If title similarity exceeds 85%, consider as duplicate
         if max(title_similarities) > 85:
             return True
             
-        # 检查作者
+        # Check authors
         for _, row in self.existing_outputs.iterrows():
             existing_authors = str(row['Authors']).lower().split(',')
             if any(author.lower() in existing_authors for author in authors):
@@ -156,13 +157,13 @@ class DataProcessor:
         return False
 
     def _standardize_authors(self, authors: List[str]) -> str:
-        """标准化作者列表"""
+        """Standardize author list"""
         if not authors:
             return ""
         return ", ".join([self._clean_text(author) for author in authors])
 
     def _extract_year(self, date_str: str) -> str:
-        """从日期字符串中提取年份"""
+        """Extract year from date string"""
         if pd.isna(date_str):
             return ""
         try:
@@ -171,30 +172,30 @@ class DataProcessor:
             return ""
 
     def process_data(self, scraped_data: pd.DataFrame, api_data: pd.DataFrame) -> pd.DataFrame:
-        """处理爬虫和API数据"""
+        """Process scraped and API data"""
         try:
-            # 合并数据
+            # Merge data
             all_data = pd.concat([scraped_data, api_data], ignore_index=True)
             
-            # 数据清洗
+            # Clean data
             all_data['Title'] = all_data['Title'].apply(self._clean_text)
             all_data['Authors'] = all_data['Authors'].apply(self._standardize_authors)
             all_data['Abstract'] = all_data['Abstract'].apply(self._clean_text)
             all_data['Year'] = all_data['Year'].apply(self._extract_year)
             
-            # 去重
+            # Remove duplicates
             unique_outputs = []
             for _, row in all_data.iterrows():
                 if not self._is_duplicate(row['Title'], row['Authors'].split(', ')):
                     unique_outputs.append(row)
                     
-            # 转换为DataFrame
+            # Convert to DataFrame
             processed_df = pd.DataFrame(unique_outputs)
             
-            # 添加处理时间戳
+            # Add processing timestamp
             processed_df['Processed_At'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            # 保存处理后的数据
+            # Save processed data
             output_file = 'data/processed/processed_research_outputs.csv'
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
             processed_df.to_csv(output_file, index=False)
@@ -207,7 +208,7 @@ class DataProcessor:
             return pd.DataFrame()
 
     def generate_summary(self, processed_df: pd.DataFrame) -> Dict[str, Any]:
-        """生成数据摘要"""
+        """Generate data summary"""
         if processed_df.empty:
             return {}
             
@@ -219,7 +220,7 @@ class DataProcessor:
             'fsrdc_compliant': processed_df['fsrdc_compliant'].sum() if 'fsrdc_compliant' in processed_df.columns else 0
         }
         
-        # 保存摘要
+        # Save summary
         summary_file = 'data/processed/research_outputs_summary.json'
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=4)
@@ -227,73 +228,73 @@ class DataProcessor:
         return summary
 
 def process_api_data():
-    """处理API数据"""
+    """Process API data"""
     try:
-        logger.info("开始处理API数据...")
+        logger.info("Starting API data processing...")
         
-        # 1. 读取原始API数据
+        # 1. Read original API data
         df = pd.read_csv("data/processed/fsrdc5_related_papers_api_all.csv")
-        logger.info(f"原始API数据量: {len(df)}")
+        logger.info(f"Original API data count: {len(df)}")
         
-        # 2. 基于标题去重
+        # 2. Deduplicate based on title
         deduplicate_self = df.drop_duplicates(subset=["title"], keep="first").reset_index(drop=True)
-        logger.info(f"标题去重后数据量: {len(deduplicate_self)}")
+        logger.info(f"Data count after title deduplication: {len(deduplicate_self)}")
         
-        # 保存第一次去重结果
+        # Save first deduplication result
         deduplicate_self.to_csv("data/processed/deduplicate_self.csv", index=False)
         
-        # 3. 读取cleaned_biblio.csv
-        cleaned_biblio = pd.read_csv("data/processed/cleaned_biblio.csv")
-        logger.info(f"读取cleaned_biblio.csv，共 {len(cleaned_biblio)} 条记录")
+        # 3. Read cleaned_biblio.csv
+        cleaned_biblio = pd.read_csv("data/raw/cleaned_biblio.csv")
+        logger.info(f"Read cleaned_biblio.csv, total {len(cleaned_biblio)} records")
         
-        # 4. 使用模糊匹配进行去重
+        # 4. Use fuzzy matching for deduplication
         def is_similar(title1, title2, threshold=80):
-            """比较两个标题的相似度，如果超过阈值则返回True"""
+            """Compare two titles for similarity, return True if similarity exceeds threshold"""
             if pd.isna(title1) or pd.isna(title2):
                 return False
             return fuzz.ratio(str(title1).lower(), str(title2).lower()) >= threshold
         
-        # 创建标记列表
+        # Create mark list
         keep_rows = []
         
-        # 检查每个标题
+        # Check each title
         for idx, row in deduplicate_self.iterrows():
-            # 默认保留该行
+            # Default to keep this row
             keep = True
             current_title = row["title"]
             
-            # 与cleaned_biblio中的每个标题比较
+            # Compare with each title in cleaned_biblio
             for biblio_title in cleaned_biblio["OutputTitle"]:
                 if is_similar(current_title, biblio_title):
-                    # 如果找到相似标题，标记为不保留
+                    # If similar title found, mark as not to keep
                     keep = False
                     break
             
             keep_rows.append(keep)
         
-        # 使用标记列表过滤数据
+        # Filter data using mark list
         after_fuzzy_df = deduplicate_self[keep_rows].reset_index(drop=True)
-        logger.info(f"模糊匹配去重后数据量: {len(after_fuzzy_df)}")
+        logger.info(f"Data count after fuzzy matching deduplication: {len(after_fuzzy_df)}")
         
-        # 5. 过滤包含2个或更多FSRDC关键词的记录
+        # 5. Filter records containing 2 or more FSRDC keywords
         def count_keywords(keywords_str):
-            """计算关键词数量"""
+            """Calculate keyword count"""
             if pd.isna(keywords_str):
                 return 0
             return len(str(keywords_str).split(", "))
         
-        # 过滤记录
+        # Filter records
         after_fuzzy_df_larger2 = after_fuzzy_df[
             after_fuzzy_df["match_rdc_criteria_keywords"].apply(count_keywords) >= 2
         ].reset_index(drop=True)
-        logger.info(f"关键词过滤后数据量: {len(after_fuzzy_df_larger2)}")
+        logger.info(f"Data count after keyword filtering: {len(after_fuzzy_df_larger2)}")
         
-        # 保存第一次最终结果（不含OpenAlex关键词）
+        # Save first final result (without OpenAlex keywords)
         after_fuzzy_df_larger2.to_csv("data/processed/final_deduped_data.csv", index=False)
         
-        # 6. 从OpenAlex API获取关键词
+        # 6. Get keywords from OpenAlex API
         def fetch_openalex_data_by_title(title):
-            """从OpenAlex获取数据"""
+            """Get data from OpenAlex"""
             url = f"https://api.openalex.org/works?search={title}"
             try:
                 response = requests.get(url)
@@ -305,11 +306,11 @@ def process_api_data():
                 else:
                     return None
             except Exception as e:
-                logger.error(f"搜索OpenAlex时出错 '{title}': {e}")
+                logger.error(f"Error searching OpenAlex for '{title}': {e}")
                 return None
         
         def get_openalex_keywords(work):
-            """从OpenAlex工作对象中提取关键词"""
+            """Extract keywords from OpenAlex work object"""
             if not work:
                 return "No keywords found"
             
@@ -318,248 +319,416 @@ def process_api_data():
                 return ", ".join([concept.get("display_name", "") for concept in concepts])
             return "No keywords found"
         
-        # 添加OpenAlex关键词
+        # Add OpenAlex keywords
         openalex_keywords = []
-        logger.info("开始从OpenAlex获取关键词...")
+        logger.info("Starting to get keywords from OpenAlex...")
         
         for idx, row in after_fuzzy_df_larger2.iterrows():
-            logger.info(f"处理第 {idx+1}/{len(after_fuzzy_df_larger2)} 条记录")
+            logger.info(f"Processing record {idx+1}/{len(after_fuzzy_df_larger2)}")
             work = fetch_openalex_data_by_title(row["title"])
             keywords = get_openalex_keywords(work)
             openalex_keywords.append(keywords)
-            time.sleep(0.12)  # 避免请求过快
+            time.sleep(0.12)  # Avoid request overload
         
         after_fuzzy_df_larger2["Keywords"] = openalex_keywords
         
-        # 保存最终结果（包含OpenAlex关键词）
+        # Save final result (with OpenAlex keywords)
         after_fuzzy_df_larger2.to_csv("data/processed/final_deduped_data_withkeyword.csv", index=False)
         
-        # 输出处理结果统计
-        logger.info(f"原始合并数据量: {len(df)}")
-        logger.info(f"第一次去重后数据量: {len(deduplicate_self)}")
-        logger.info(f"模糊匹配去重后数据量: {len(after_fuzzy_df)}")
-        logger.info(f"关键词过滤后数据量: {len(after_fuzzy_df_larger2)}")
-        logger.info("已添加OpenAlex关键词列")
+        # Output processing result statistics
+        logger.info(f"Original merged data count: {len(df)}")
+        logger.info(f"Data count after first deduplication: {len(deduplicate_self)}")
+        logger.info(f"Data count after fuzzy matching deduplication: {len(after_fuzzy_df)}")
+        logger.info(f"Data count after keyword filtering: {len(after_fuzzy_df_larger2)}")
+        logger.info("OpenAlex keywords added")
         
         return after_fuzzy_df_larger2
         
     except Exception as e:
-        logger.error(f"处理API数据时出错: {str(e)}")
+        logger.error(f"Error in API data processing: {str(e)}")
         raise
 
 def check_duplicates_with_research_outputs(scraped_data: pd.DataFrame, research_outputs: pd.DataFrame) -> pd.DataFrame:
     """
-    检查爬取的数据是否与ResearchOutputs.xlsx中的数据重复，使用精确匹配和模糊匹配
+    Check if scraped data is duplicate with ResearchOutputs.xlsx data, using exact matching and fuzzy matching
     
     Args:
-        scraped_data: 从web_scraping.py获取的数据
-        research_outputs: 从ResearchOutputs.xlsx读取的数据
+        scraped_data: Data from web_scraping.py
+        research_outputs: Data from ResearchOutputs.xlsx
     
     Returns:
-        去重后的DataFrame
+        Deduplicated DataFrame
     """
-    logger.info("开始检查重复数据...")
+    logger.info("Starting to check duplicate data...")
     
-    # 确保两个DataFrame都有title列
+    # Ensure both DataFrames have title column
     if 'title' not in scraped_data.columns:
-        logger.error("scraped_data中没有title列")
+        logger.error("scraped_data has no title column")
         return scraped_data
     
     if 'OutputTitle' not in research_outputs.columns:
-        logger.error("research_outputs中没有OutputTitle列")
+        logger.error("research_outputs has no OutputTitle column")
         return scraped_data
     
-    # 1. 首先进行基于标题的精确去重
+    # 1. First perform exact deduplication based on title
     scraped_data = scraped_data.drop_duplicates(subset=["title"], keep="first").reset_index(drop=True)
-    logger.info(f"精确去重后数据量: {len(scraped_data)}")
+    logger.info(f"Data count after exact deduplication: {len(scraped_data)}")
     
-    # 2. 使用模糊匹配进行去重
+    # 2. Use fuzzy matching for deduplication
     def is_similar(title1, title2, threshold=80):
-        """比较两个标题的相似度，如果超过阈值则返回True"""
+        """Compare two titles for similarity, return True if similarity exceeds threshold"""
         if pd.isna(title1) or pd.isna(title2):
             return False
         return fuzz.ratio(str(title1).lower(), str(title2).lower()) >= threshold
     
-    # 创建标记列表
+    # Create mark list
     keep_rows = []
     
-    # 检查每个标题
+    # Check each title
     for idx, row in scraped_data.iterrows():
-        # 默认保留该行
+        # Default to keep this row
         keep = True
         current_title = row["title"]
         
-        # 与ResearchOutputs中的每个标题比较
+        # Compare with each title in research_outputs
         for biblio_title in research_outputs["OutputTitle"]:
             if is_similar(current_title, biblio_title):
-                # 如果找到相似标题，标记为不保留
+                # If similar title found, mark as not to keep
                 keep = False
                 break
         
         keep_rows.append(keep)
     
-    # 使用标记列表过滤数据
+    # Filter data using mark list
     deduplicated_data = scraped_data[keep_rows].reset_index(drop=True)
     
-    # 记录去重结果
-    logger.info(f"原始数据量: {len(scraped_data)}")
-    logger.info(f"模糊匹配去重后数据量: {len(deduplicated_data)}")
+    # Record deduplication result
+    logger.info(f"Original data count: {len(scraped_data)}")
+    logger.info(f"Data count after fuzzy matching deduplication: {len(deduplicated_data)}")
     
-    # 保存重复数据到单独的文件
+    # Save duplicate data to separate file
     duplicate_data = scraped_data[~scraped_data.index.isin(deduplicated_data.index)]
     if not duplicate_data.empty:
         output_file = 'data/processed/duplicate_data.csv'
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         duplicate_data.to_csv(output_file, index=False)
-        logger.info(f"重复数据已保存到 {output_file}")
+        logger.info(f"Duplicate data saved to {output_file}")
     
     return deduplicated_data
 
-def check_duplicates_between_sources(web_data: pd.DataFrame, api_data: pd.DataFrame) -> pd.DataFrame:
-    """
-    检查web数据和API数据之间的重复，使用精确匹配和模糊匹配，并智能合并列
+def get_paper_metadata(title_query: str, sleep_time: float = 0.15):
+    """Get paper metadata based on paper title"""
+    # Check if title_query is None or empty
+    if not title_query or not isinstance(title_query, str):
+        print(f"Invalid title query: {title_query}")
+        return None
+
+    # Implement rate limiting
+    time.sleep(sleep_time)
+
+    # Build search URL
+    url = f"https://api.openalex.org/works?search={title_query.replace(' ', '%20')}"
+    headers = {"User-Agent": "YourProject (your.email@domain.com)"}
+
+    try:
+        # Send GET request to OpenAlex API
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        # Check if results found
+        if not data.get("results"):
+            print(f"No results found for: {title_query}")
+            return None
+
+        # Use first search result
+        work = data["results"][0]
+
+        # Extract basic metadata and keywords
+        metadata = {
+            "doi": work.get("doi", "N/A"),
+        }
+
+        # Get keywords from concepts
+        concepts = work.get("concepts", [])
+        if concepts:
+            metadata["keywords"] = ", ".join([concept.get("display_name", "") for concept in concepts])
+        else:
+            metadata["keywords"] = "No keywords found"
+
+        # Extract institution information
+        institution_names = set()
+        raw_affiliations = set()
+        detailed_affiliations = set()
+
+        for authorship in work.get("authorships", []):
+            # Institutions
+            for inst in authorship.get("institutions", []):
+                inst_name = inst.get("display_name")
+                if inst_name:
+                    institution_names.add(inst_name)
+
+            # Raw affiliations
+            raw_aff_strings = authorship.get("raw_affiliation_strings", [])
+            raw_affiliations.update(raw_aff_strings)
+
+            # Detailed affiliations
+            for aff in authorship.get("affiliations", []):
+                aff_string = aff.get("raw_affiliation_string")
+                if aff_string:
+                    detailed_affiliations.add(aff_string)
+
+        metadata.update(
+            {
+                "institution_display_names": "; ".join(institution_names) if institution_names else "",
+                "raw_affiliation_strings": "; ".join(raw_affiliations) if raw_affiliations else "",
+                "detailed_affiliations": "; ".join(detailed_affiliations) if detailed_affiliations else "",
+            }
+        )
+
+        return metadata
+
+    except Exception as e:
+        print(f"Error fetching metadata for {title_query}: {e}")
+        return None
+
+def enrich_cleaned_data(input_file: str, output_file: str, sleep_time: float = 0.15):
+    """Enrich data from input CSV with metadata from OpenAlex"""
+    logger.info(f"Starting to process cleaned data: {input_file}")
     
+    # Read input CSV
+    df = pd.read_csv(input_file)
+
+    # Prepare output CSV
+    fieldnames = [
+        "title",
+        "year",
+        "datasets",
+        "display_author_names",
+        "raw_author_names",
+        "doi",
+        "abstract",
+        "institution_display_names",
+        "raw_affiliation_strings",
+        "detailed_affiliations",
+        "original_keywords",
+        "original_agency",
+        "keywords"
+    ]
+
+    with open(output_file, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        # Process each paper
+        for idx, row in tqdm(df.iterrows(), total=len(df), desc="Processing papers"):
+            title = str(row["Title"]).strip()
+            print(f"\nProcessing paper {idx+1}/{len(df)}: {title}")
+
+            # Create output row with default values
+            output_row = {
+                "title": title,
+                "year": row.get("Year", ""),  # Use original year if available
+                "datasets": "",
+                "display_author_names": "",
+                "raw_author_names": "",
+                "doi": "",
+                "abstract": "",
+                "institution_display_names": "",
+                "raw_affiliation_strings": "",
+                "detailed_affiliations": "",
+                "original_keywords": row.get("Keywords", ""),
+                "original_agency": row.get("Agency", ""),
+                "keywords": ""
+            }
+
+            # Only try to get metadata if title is not empty or nan
+            if title and title.lower() != "nan":
+                metadata = get_paper_metadata(title, sleep_time)
+                if metadata:
+                    # Only update year if not already present in original data
+                    if not output_row["year"]:
+                        output_row["year"] = metadata.get("year", "")
+                    # Update other fields
+                    metadata_without_year = {k: v for k, v in metadata.items() if k != "year"}
+                    output_row.update(metadata_without_year)
+
+            # Write to CSV
+            writer.writerow(output_row)
+
+    logger.info(f"Cleaned data enrichment completed, results saved to: {output_file}")
+
+def enrich_scraped_data(input_file: str, output_file: str, sleep_time: float = 0.15):
+    """Enrich scraped data with metadata from OpenAlex"""
+
+    # Read input CSV
+    df = pd.read_csv(input_file)
+
+    # Prepare output CSV - keep original columns and add new ones
+    original_columns = df.columns.tolist()
+    new_columns = ["doi", "keywords", "institution_display_names", "raw_affiliation_strings", "detailed_affiliations"]
+
+    all_columns = original_columns + new_columns
+
+    with open(output_file, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=all_columns)
+        writer.writeheader()
+
+        # Process each paper
+        for idx, row in tqdm(df.iterrows(), total=len(df), desc="Processing papers"):
+            title = str(row["title"]).strip()
+            if not title or title.lower() == "nan":
+                continue
+
+            print(f"\nProcessing paper {idx+1}/{len(df)}: {title}")
+
+            # Create output row with original data and default values for new fields
+            output_row = {col: row[col] for col in original_columns}
+            output_row.update(
+                {
+                    "doi": "N/A",
+                    "keywords": "No keywords found",
+                    "institution_display_names": "",
+                    "raw_affiliation_strings": "",
+                    "detailed_affiliations": "",
+                }
+            )
+
+            # Get metadata from OpenAlex and update if found
+            metadata = get_paper_metadata(title, sleep_time)
+            if metadata:
+                output_row.update(metadata)
+
+            # Write to CSV
+            writer.writerow(output_row)
+
+    print(f"\nProcess completed. Results saved to {output_file}")
+
+def standardize_authors(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Standardize author information across different formats into a single authors column.
+
     Args:
-        web_data: web爬取的数据
-        api_data: API获取的数据
-    
+        df: DataFrame containing author information
+
     Returns:
-        去重后的DataFrame
+        DataFrame with standardized authors column
     """
-    logger.info("开始检查web数据和API数据之间的重复...")
-    
-    # 打印两个数据集的列名和示例数据
-    logger.info("\nWeb数据列名和示例:")
-    logger.info(f"列名: {web_data.columns.tolist()}")
-    logger.info("\n前3行数据示例:")
-    logger.info(web_data.head(3).to_string())
-    
-    logger.info("\nAPI数据列名和示例:")
-    logger.info(f"列名: {api_data.columns.tolist()}")
-    logger.info("\n前3行数据示例:")
-    logger.info(api_data.head(3).to_string())
-    
-    # 分析可能的列名对应关系
-    def find_similar_columns(df1_cols, df2_cols, threshold=80):
-        """查找相似的列名"""
-        similar_cols = {}
-        for col1 in df1_cols:
-            for col2 in df2_cols:
-                similarity = fuzz.ratio(str(col1).lower(), str(col2).lower())
-                if similarity >= threshold:
-                    similar_cols[col1] = col2
-        return similar_cols
-    
-    similar_columns = find_similar_columns(web_data.columns, api_data.columns)
-    logger.info("\n可能的列名对应关系:")
-    for web_col, api_col in similar_columns.items():
-        logger.info(f"{web_col} <-> {api_col}")
-    
-    # 确保两个DataFrame都有必要的列
-    required_columns = ['title', 'authors']
-    for col in required_columns:
-        if col not in web_data.columns or col not in api_data.columns:
-            logger.error(f"缺少必要的列: {col}")
-            return pd.concat([web_data, api_data], ignore_index=True)
-    
-    def is_similar(title1, title2, threshold=80):
-        """比较两个标题的相似度"""
-        if pd.isna(title1) or pd.isna(title2):
-            return False
-        return fuzz.ratio(str(title1).lower(), str(title2).lower()) >= threshold
-    
-    def authors_overlap(authors1, authors2):
-        """检查作者是否有重叠"""
-        if pd.isna(authors1) or pd.isna(authors2):
-            return False
-        authors1 = set(str(authors1).lower().split(', '))
-        authors2 = set(str(authors2).lower().split(', '))
-        return bool(authors1.intersection(authors2))
-    
-    # 创建标记列表
-    keep_rows = []
-    
-    # 检查每个web数据条目
-    for idx, web_row in web_data.iterrows():
-        # 默认保留该行
-        keep = True
-        current_title = web_row["title"]
-        current_authors = web_row["authors"]
-        
-        # 与API数据中的每个条目比较
-        for _, api_row in api_data.iterrows():
-            api_title = api_row["title"]
-            api_authors = api_row["authors"]
-            
-            # 如果标题相似或作者有重叠，标记为不保留
-            if is_similar(current_title, api_title) or authors_overlap(current_authors, api_authors):
-                keep = False
-                break
-        
-        keep_rows.append(keep)
-    
-    # 使用标记列表过滤web数据
-    web_data_filtered = web_data[keep_rows].reset_index(drop=True)
-    
-    # 智能合并列
-    # 1. 找出共同的列
-    common_columns = list(set(web_data_filtered.columns) & set(api_data.columns))
-    logger.info(f"\n共同列: {common_columns}")
-    
-    # 2. 找出web数据独有的列
-    web_only_columns = list(set(web_data_filtered.columns) - set(api_data.columns))
-    logger.info(f"Web数据独有列: {web_only_columns}")
-    
-    # 3. 找出API数据独有的列
-    api_only_columns = list(set(api_data.columns) - set(web_data_filtered.columns))
-    logger.info(f"API数据独有列: {api_only_columns}")
-    
-    # 4. 创建合并后的DataFrame
-    merged_data = pd.DataFrame()
-    
-    # 5. 添加共同列（优先使用API数据中的值）
-    for col in common_columns:
-        merged_data[col] = api_data[col]
-        # 对于web数据中独有的行，使用web数据的值
-        merged_data.loc[web_data_filtered.index, col] = web_data_filtered[col]
-    
-    # 6. 添加web数据独有的列
-    for col in web_only_columns:
-        merged_data[col] = web_data_filtered[col]
-        # 对于API数据中的行，填充空值
-        merged_data.loc[api_data.index, col] = None
-    
-    # 7. 添加API数据独有的列
-    for col in api_only_columns:
-        merged_data[col] = api_data[col]
-        # 对于web数据中的行，填充空值
-        merged_data.loc[web_data_filtered.index, col] = None
-    
-    # 记录去重结果
-    logger.info(f"\nWeb数据原始量: {len(web_data)}")
-    logger.info(f"API数据原始量: {len(api_data)}")
-    logger.info(f"去重后Web数据量: {len(web_data_filtered)}")
-    logger.info(f"最终合并数据量: {len(merged_data)}")
-    
-    # 保存重复数据到单独的文件
-    duplicate_data = web_data[~web_data.index.isin(web_data_filtered.index)]
-    if not duplicate_data.empty:
-        output_file = 'data/processed/web_api_duplicates.csv'
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        duplicate_data.to_csv(output_file, index=False)
-        logger.info(f"重复数据已保存到 {output_file}")
-    
-    # 保存列名信息
-    column_info = {
-        'common_columns': common_columns,
-        'web_only_columns': web_only_columns,
-        'api_only_columns': api_only_columns,
-        'similar_columns': similar_columns
-    }
-    with open('data/processed/column_info.json', 'w') as f:
-        json.dump(column_info, f, indent=4)
-    
-    return merged_data
+    # For scraped data with list-type authors
+    if "authors" in df.columns:
+        # Convert string representation of list to actual list if needed
+        df["authors"] = df["authors"].apply(lambda x: eval(x) if isinstance(x, str) and x.startswith("[") else x)
+        # Convert list to semicolon-separated string
+        df["authors"] = df["authors"].apply(lambda x: "; ".join(x) if isinstance(x, list) else x)
+
+    # For cleaned data and api data with display_author_names and raw_author_names
+    author_cols = []
+    if "display_author_names" in df.columns:
+        author_cols.append("display_author_names")
+    if "raw_author_names" in df.columns:
+        author_cols.append("raw_author_names")
+
+    if author_cols:
+        # For each row, combine and deduplicate authors from both columns
+        def combine_authors(row):
+            authors = set()
+            for col in author_cols:
+                if pd.notna(row[col]) and row[col]:
+                    authors.update(row[col].split("; "))
+            return "; ".join(sorted(authors))
+
+        df["authors"] = df.apply(combine_authors, axis=1)
+        df = df.drop(columns=author_cols)
+
+    return df
+
+
+def merge_enriched_data(
+    enriched_scraped_path: str,
+    enriched_cleaned_path: str,
+    enriched_api_path: str,
+    output_path: str = "data/processed/merged_3_enriched_data.csv",
+) -> pd.DataFrame:
+    """
+    Merge three enriched datasets while preserving all columns.
+
+    Args:
+        enriched_scraped_path: Path to enriched scraped data CSV
+        enriched_cleaned_path: Path to enriched cleaned data CSV
+        enriched_api_path: Path to enriched API data CSV
+        output_path: Path to save merged data CSV
+
+    Returns:
+        Merged DataFrame
+    """
+    # Read the three datasets
+    scraped_df = pd.read_csv(enriched_scraped_path)
+    cleaned_df = pd.read_csv(enriched_cleaned_path)
+    api_df = pd.read_csv(enriched_api_path)
+
+    # Print initial counts
+    print("Initial counts:")
+    print(f"Scraped data: {len(scraped_df)} records")
+    print(f"Cleaned data: {len(cleaned_df)} records")
+    print(f"API data: {len(api_df)} records")
+
+    # Drop datasets column from scraped and cleaned data
+    if "datasets" in cleaned_df.columns:
+        cleaned_df = cleaned_df.drop(columns=["datasets"])
+
+    if "dataset" in api_df.columns:
+        api_df = api_df.drop(columns=["dataset"])
+
+    # Process scraped data
+    if "project_start_year" in scraped_df.columns:
+        scraped_df = scraped_df.drop(columns=["project_start_year"])
+    if "project_end_year" in scraped_df.columns:
+        scraped_df = scraped_df.rename(columns={"project_end_year": "year"})
+        scraped_df["year"] = pd.to_numeric(scraped_df["year"], errors="coerce").astype("Int64")
+
+    if "affiliations" in scraped_df.columns:
+        scraped_df = scraped_df.drop(columns=["affiliations"])
+    if "project_id" in scraped_df.columns:
+        # to int
+        scraped_df["project_id"] = pd.to_numeric(scraped_df["project_id"], errors="coerce").astype("Int64")
+    if "project_rdc" in scraped_df.columns:
+        # rename to Agency
+        scraped_df = scraped_df.rename(columns={"project_rdc": "Agency"})
+    if "citations" in scraped_df.columns:
+        # drop citations column
+        scraped_df = scraped_df.drop(columns=["citations"])
+    # Rename project_abstract to abstract in scraped data
+    if "project_abstract" in scraped_df.columns:
+        # drop project_abstract column
+        scraped_df = scraped_df.drop(columns=["project_abstract"])
+
+    # Standardize authors in all datasets
+    scraped_df = standardize_authors(scraped_df)
+    cleaned_df = standardize_authors(cleaned_df)
+    api_df = standardize_authors(api_df)
+
+    # Rename columns to standardize
+    if "keywords" in scraped_df.columns:
+        scraped_df = scraped_df.rename(columns={"keywords": "Keywords"})
+
+    cleaned_df = cleaned_df.rename(columns={"original_agency": "Agency", "original_keywords": "Keywords"})
+
+    # Combine all DataFrames
+    merged_df = pd.concat([scraped_df, cleaned_df, api_df], ignore_index=True)
+
+    # Print column counts
+    print("\nColumns in merged dataset:")
+    for col in sorted(merged_df.columns):
+        non_null_count = merged_df[col].count()
+        print(f"{col}: {non_null_count} non-null values")
+
+    print(f"\nTotal records in merged dataset: {len(merged_df)}")
+
+    # Save to CSV
+    merged_df.to_csv(output_path, index=False)
+    print(f"\nMerged data saved to {output_path}")
+
+    return merged_df
 
 def process_data():
     """
@@ -585,23 +754,36 @@ def process_data():
         api_data_deduped = process_api_data()
         logger.info(f"API去重后数据量: {len(api_data_deduped)}")
         
-        # 4. 检查web数据和API数据之间的重复
-        logger.info("正在检查web数据和API数据之间的重复...")
-        combined_data = check_duplicates_between_sources(web_data_deduped, api_data_deduped)
-        logger.info(f"合并去重后数据量: {len(combined_data)}")
+        # 4. 补充元数据
+        logger.info("开始补充元数据...")
+        enrich_cleaned_data(
+            input_file="data/raw/cleaned_data.csv",
+            output_file="data/processed/enriched_cleaned_data_openalex.csv",
+            sleep_time=0.12
+        )
         
-        # 5. 保存最终结果
-        output_file = 'data/processed/final_combined_data.csv'
-        combined_data.to_csv(output_file, index=False)
-        logger.info(f"已保存最终结果到: {output_file}")
+        enrich_scraped_data(
+            input_file="data/processed/deduplicated_scraped_data.csv",
+            output_file="data/processed/enriched_scraped_data_openalex.csv",
+            sleep_time=0.12
+        )
+        
+        # 5. 合并所有数据
+        logger.info("开始合并所有数据...")
+        merged_df = merge_enriched_data(
+            enriched_scraped_path="data/processed/enriched_scraped_data_openalex.csv",
+            enriched_cleaned_path="data/processed/enriched_cleaned_data_openalex.csv",
+            enriched_api_path="data/processed/final_deduped_data_withkeyword.csv",
+            output_path="data/processed/merged_3_enriched_data.csv"
+        )
         
         # 6. 打印详细的统计信息
         logger.info("\n数据处理统计:")
-        logger.info(f"1. ResearchOutputs.xlsx数据量: {len(research_outputs)}")
-        logger.info(f"2. Web scraping原始数据量: {len(web_data)}")
-        logger.info(f"3. Web scraping去重后数据量: {len(web_data_deduped)}")
-        logger.info(f"4. API去重后数据量: {len(api_data_deduped)}")
-        logger.info(f"5. 最终合并去重后数据量: {len(combined_data)}")
+        # logger.info(f"1. ResearchOutputs.xlsx数据量: {len(research_outputs)}")
+        # logger.info(f"2. Web scraping原始数据量: {len(web_data)}")
+        # logger.info(f"3. Web scraping去重后数据量: {len(web_data_deduped)}")
+        # logger.info(f"4. API去重后数据量: {len(api_data_deduped)}")
+        logger.info(f"5. 最终合并数据量: {len(merged_df)}")
         
         logger.info("数据处理完成！")
         
