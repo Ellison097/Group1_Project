@@ -53,8 +53,13 @@ Thumbs.db
 !data/processed/research_outputs_1735_4.csv
 !data/processed/scraped_data.csv
 !data/processed/scraped_data_intermediate.csv
+!data/processed/enriched_cleaned_data_openalex.csv
+!data/processed/enriched_scraped_data_openalex.csv
+!data/processed/merged_3_enriched_data.csv
 !data/raw/ProjectsAllMetadata.xlsx
 !data/raw/ResearchOutputs.xlsx
+!data/raw/cleaned_data.csv
+!data/raw/cleaned_biblio.csv
 
 # Other data files are still ignored
 data/raw/*
