@@ -260,7 +260,7 @@ class ResearchGraphVisualizer:
             plotly.graph_objects.Figure: Institution metrics chart
         """
         # Get institution metrics
-        institution_metrics = self.analyzer.get_institution_metrics()
+        institution_metrics = self.analyzer.metrics.get('influence', {})
         if not institution_metrics:
             return self._create_empty_plot("No institution metrics available")
         
@@ -399,7 +399,7 @@ class ResearchGraphVisualizer:
             plotly.graph_objects.Figure: Temporal metrics chart
         """
         # Get temporal metrics
-        temporal_metrics = self.analyzer.get_temporal_metrics()
+        temporal_metrics = self.analyzer.metrics.get('temporal_evolution', {})
         if not temporal_metrics:
             return self._create_empty_plot("No temporal metrics available")
         
@@ -448,7 +448,7 @@ class ResearchGraphVisualizer:
             plotly.graph_objects.Figure: Yearly activity chart
         """
         # Get year activity data
-        year_activity = self.analyzer.get_year_activity()
+        year_activity = self.analyzer._compute_year_activity()
         if not year_activity:
             return self._create_empty_plot("No year activity data available")
         
@@ -479,7 +479,7 @@ class ResearchGraphVisualizer:
             plotly.graph_objects.Figure: Topic evolution chart
         """
         # Get topic evolution data
-        topic_evolution = self.analyzer.get_topic_evolution()
+        topic_evolution = self.analyzer._compute_topic_evolution()
         if not topic_evolution:
             return self._create_empty_plot("No topic evolution data available")
         
