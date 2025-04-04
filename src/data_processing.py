@@ -607,10 +607,10 @@ def enrich_scraped_data(input_file: str, output_file: str, sleep_time: float = 0
 def standardize_authors(df: pd.DataFrame) -> pd.DataFrame:
     """
     Standardize author information across different formats into a single authors column.
-
+    
     Args:
         df: DataFrame containing author information
-
+    
     Returns:
         DataFrame with standardized authors column
     """
@@ -732,30 +732,30 @@ def merge_enriched_data(
 
 def process_data():
     """
-    主处理函数
+    Main processing function
     """
     try:
-        # 1. 读取ResearchOutputs.xlsx
-        logger.info("正在读取ResearchOutputs.xlsx...")
+        # 1. Read ResearchOutputs.xlsx
+        logger.info("Reading ResearchOutputs.xlsx...")
         research_outputs = pd.read_excel('data/raw/ResearchOutputs.xlsx')
-        logger.info(f"ResearchOutputs.xlsx数据量: {len(research_outputs)}")
+        logger.info(f"ResearchOutputs.xlsx data count: {len(research_outputs)}")
         
-        # 2. 读取web scraping数据并去重
-        logger.info("正在读取web scraping数据...")
+        # 2. Read web scraping data and deduplicate
+        logger.info("Reading web scraping data...")
         web_data = pd.read_csv('data/processed/scraped_data.csv')
-        logger.info(f"Web scraping原始数据量: {len(web_data)}")
+        logger.info(f"Original web scraping data count: {len(web_data)}")
         
-        # 对web scraping数据进行去重
+        # Deduplicate web scraping data
         web_data_deduped = check_duplicates_with_research_outputs(web_data, research_outputs)
-        logger.info(f"Web scraping去重后数据量: {len(web_data_deduped)}")
+        logger.info(f"Web scraping data count after deduplication: {len(web_data_deduped)}")
         
-        # 3. 处理API数据（包含关键词去重）
-        logger.info("开始处理API数据...")
+        # 3. Process API data (including keyword deduplication)
+        logger.info("Starting API data processing...")
         api_data_deduped = process_api_data()
-        logger.info(f"API去重后数据量: {len(api_data_deduped)}")
+        logger.info(f"API data count after deduplication: {len(api_data_deduped)}")
         
-        # 4. 补充元数据
-        logger.info("开始补充元数据...")
+        # 4. Enrich metadata
+        logger.info("Starting metadata enrichment...")
         enrich_cleaned_data(
             input_file="data/raw/cleaned_data.csv",
             output_file="data/processed/enriched_cleaned_data_openalex.csv",
@@ -768,8 +768,8 @@ def process_data():
             sleep_time=0.12
         )
         
-        # 5. 合并所有数据
-        logger.info("开始合并所有数据...")
+        # 5. Merge all data
+        logger.info("Starting data merging...")
         merged_df = merge_enriched_data(
             enriched_scraped_path="data/processed/enriched_scraped_data_openalex.csv",
             enriched_cleaned_path="data/processed/enriched_cleaned_data_openalex.csv",
@@ -777,19 +777,79 @@ def process_data():
             output_path="data/processed/merged_3_enriched_data.csv"
         )
         
-        # 6. 打印详细的统计信息
-        logger.info("\n数据处理统计:")
-        # logger.info(f"1. ResearchOutputs.xlsx数据量: {len(research_outputs)}")
-        # logger.info(f"2. Web scraping原始数据量: {len(web_data)}")
-        # logger.info(f"3. Web scraping去重后数据量: {len(web_data_deduped)}")
-        # logger.info(f"4. API去重后数据量: {len(api_data_deduped)}")
-        logger.info(f"5. 最终合并数据量: {len(merged_df)}")
+        # 6. Print detailed statistics
+        logger.info("\nData processing statistics:")
+        logger.info(f"1. ResearchOutputs.xlsx data count: {len(research_outputs)}")
+        logger.info(f"2. Original web scraping data count: {len(web_data)}")
+        logger.info(f"3. Web scraping data count after deduplication: {len(web_data_deduped)}")
+        logger.info(f"4. API data count after deduplication: {len(api_data_deduped)}")
+        logger.info(f"5. Final merged data count: {len(merged_df)}")
         
-        logger.info("数据处理完成！")
+        logger.info("Data processing completed!")
         
     except Exception as e:
-        logger.error(f"数据处理过程中发生错误: {str(e)}")
+        logger.error(f"Error occurred during data processing: {str(e)}")
         raise
+
+def fill_authors_from_biblio():
+    """
+    Fill authors from cleaned_biblio.csv into merged_3_enriched_data.csv
+    """
+    try:
+        # Read the merged enriched data
+        merged_data_path = os.path.join("data/processed", "merged_3_enriched_data.csv")
+        if not os.path.exists(merged_data_path):
+            logging.error(f"Merged data file not found: {merged_data_path}")
+            return 0
+        
+        merged_df = pd.read_csv(merged_data_path)
+        logging.info(f"Read merged data with {len(merged_df)} rows")
+        
+        # Read the cleaned bibliography
+        biblio_path = os.path.join("data/raw", "cleaned_biblio.csv")
+        if not os.path.exists(biblio_path):
+            logging.error(f"Bibliography file not found: {biblio_path}")
+            return 0
+        
+        biblio_df = pd.read_csv(biblio_path)
+        logging.info(f"Read bibliography with {len(biblio_df)} rows")
+        
+        # Process Authors column: replace commas with semicolons and remove 'and' words
+        biblio_df['Authors'] = biblio_df['Authors'].apply(lambda x: 
+            str(x).replace(',', ';').replace(' and ', ';').replace(' and', ';').replace('and ', ';') 
+            if pd.notna(x) else '')
+        
+        # Create a mapping from title to authors
+        title_to_authors = dict(zip(biblio_df['OutputTitle'], biblio_df['Authors']))
+        
+        # Count how many titles match
+        matched_titles = 0
+        filled_authors = 0
+        
+        # Fill authors for matching titles
+        for idx, row in merged_df.iterrows():
+            title = row['title']
+            if title in title_to_authors:
+                matched_titles += 1
+                if pd.isna(merged_df.at[idx, 'authors']) or merged_df.at[idx, 'authors'] == '':
+                    merged_df.at[idx, 'authors'] = title_to_authors[title]
+                    filled_authors += 1
+        
+        logging.info(f"Matched {matched_titles} titles between the two datasets")
+        logging.info(f"Filled {filled_authors} empty author fields")
+        
+        # Save the updated dataframe
+        output_path = os.path.join("data/processed", "New_And_Original_ResearchOutputs.csv")
+        merged_df.to_csv(output_path, index=False)
+        logging.info(f"Saved updated data to {output_path}")
+        
+        return filled_authors
+        
+    except Exception as e:
+        logging.error(f"Error filling authors from bibliography: {str(e)}")
+        return 0
 
 if __name__ == "__main__":
     process_data() 
+    filled_authors = fill_authors_from_biblio()
+    logging.info(f"Step 7: Added {filled_authors} authors from bibliography") 

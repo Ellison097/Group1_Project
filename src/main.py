@@ -3,6 +3,8 @@ import logging
 from web_scraping import WebScraper
 from api_integration import process_csv_and_find_citations
 from data_processing import process_data
+from graph_analysis import ResearchGraphBuilder
+from visualization import ResearchGraphVisualizer
 
 # Configure logging
 logging.basicConfig(
@@ -50,25 +52,103 @@ def check_data_files():
 
 def main():
     """Main function"""
+    print("\n=== Research Network Analysis System ===")
+    print("Starting analysis process...\n")
+    
     try:
-        # Check data files
-        if not check_data_files():
-            print("\nPlease ensure all required data files exist before running the program.")
+        # Step 1: Data file check
+        print("Step 1: Checking data files")
+        print("-" * 50)
+        if check_data_files():
+            print("✓ All required data files exist")
+        else:
+            print("✗ Missing required data files, please ensure all files are prepared")
             return
+        print()
         
-        # If all files exist, return directly
-        print("\nAll data files exist, no need to reprocess.")
-        return
+        # Step 2: Data preprocessing
+        print("Step 2: Data preprocessing")
+        print("-" * 50)
+        processed_file = 'data/processed/New_And_Original_ResearchOutputs.csv'
+        if os.path.exists(processed_file):
+            print(f"✓ Preprocessed data file exists: {processed_file}")
+            print("  Skipping preprocessing step")
+        else:
+            print("Starting data preprocessing...")
+            process_data()
+            print("✓ Data preprocessing completed")
+        print()
         
-        # The following code will not execute due to the return above
-        # Run data processing
-        # from data_processing import process_data
-        # process_data()
+        # Step 3: Graph analysis
+        print("Step 3: Graph analysis")
+        print("-" * 50)
+        pkl_path = "output/analysis_results.pkl"
+        if os.path.exists(pkl_path):
+            print("Found saved analysis results, loading directly...")
+            graph_builder = ResearchGraphBuilder.load_from_file(pkl_path)
+            print("✓ Successfully loaded saved analysis results")
+            
+            print("Recalculating network metrics...")
+            graph_builder.compute_advanced_metrics()
+            print("✓ Network metrics calculation completed")
+        else:
+            print("Starting new graph analysis...")
+            graph_builder = ResearchGraphBuilder(processed_file)
+            
+            print("Building research network...")
+            graph_builder.build_main_graph()
+            graph_builder.build_institution_graph()
+            graph_builder.build_year_graph()
+            
+            # Add calls to build author, keyword and citation graphs
+            print("Building author collaboration network...")
+            graph_builder.build_author_graph()
+            
+            print("Building keyword co-occurrence network...")
+            graph_builder.build_keyword_graph()
+            
+            print("Building citation network...")
+            graph_builder.build_citation_graph()
+            
+            print("Calculating network metrics...")
+            graph_builder.compute_advanced_metrics()
+            
+            print("Saving analysis results...")
+            graph_builder.save_to_file()
+            print("✓ Graph analysis completed and results saved")
+        print()
         
-        # print("\nData processing completed!")
+        # Step 4: Visualization analysis
+        print("Step 4: Visualization analysis")
+        print("-" * 50)
+        print("Initializing visualizer...")
+        visualizer = ResearchGraphVisualizer(graph_builder)
+        print("✓ Visualizer initialization completed")
+        print()
+        
+        # Step 5: Generate visualization results
+        print("Step 5: Generate visualization results")
+        print("-" * 50)
+        output_dir = 'output/visualizations'
+        if os.path.exists(output_dir) and os.listdir(output_dir):
+            print(f"Found existing visualization results in: {output_dir}")
+            print("Do you want to regenerate visualization results? (y/n)")
+            response = input().lower()
+            if response != 'y':
+                print("Skipping visualization result generation")
+                return
+        
+        print("Generating visualization results...")
+        visualizer.save_all_plots()
+        print(f"✓ Visualization results have been saved to: {output_dir}")
+        print()
+        
+        print("=== Analysis Process Completed ===")
+        print("All steps have been successfully executed!")
         
     except Exception as e:
-        print(f"\nProgram error: {str(e)}")
+        print("\n✗ Error: An error occurred during execution")
+        print(f"Error message: {str(e)}")
         raise
 
 if __name__ == "__main__":
