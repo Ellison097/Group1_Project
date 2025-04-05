@@ -1,39 +1,37 @@
-import pandas as pd
-import numpy as np
-from thefuzz import fuzz
-from typing import List, Dict, Any
-import logging
-import re
-from datetime import datetime
-import os
-import json
-import time
-import requests
-from tqdm import tqdm
 import csv
+import json
+import logging
+import os
+import re
+import time
+from datetime import datetime
+from typing import Any, Dict, List
+
+import pandas as pd
+import requests
+from thefuzz import fuzz
+from tqdm import tqdm
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('data_processing.log'),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("logs/data_processing.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
+
 
 class DataProcessor:
     def __init__(self):
         self.threshold = 85  # Fuzzy matching threshold
-        
+
         # Load existing research outputs
         self.existing_outputs = self._load_existing_outputs()
 
     def _load_existing_outputs(self) -> pd.DataFrame:
         """Load existing research outputs data"""
         try:
-            return pd.read_excel('data/raw/ResearchOutputs.xlsx')
+            return pd.read_excel("data/raw/ResearchOutputs.xlsx")
         except Exception as e:
             logger.error(f"Error loading existing outputs: {e}")
             return pd.DataFrame()
@@ -45,19 +43,19 @@ class DataProcessor:
         # Convert to lowercase
         text = str(text).lower()
         # Remove special characters
-        text = re.sub(r'[^\w\s]', ' ', text)
+        text = re.sub(r"[^\w\s]", " ", text)
         # Remove extra spaces
-        text = ' '.join(text.split())
+        text = " ".join(text.split())
         return text
 
     def _check_uniqueness(self, title: str) -> bool:
         """Check if research output exists in 2024 dataset"""
         if self.existing_outputs.empty:
             return True
-        
+
         cleaned_title = self._clean_text(title)
         for _, row in self.existing_outputs.iterrows():
-            existing_title = self._clean_text(row['OutputTitle'])
+            existing_title = self._clean_text(row["OutputTitle"])
             # Use fuzzy matching
             similarity = fuzz.ratio(cleaned_title, existing_title)
             if similarity >= self.threshold:
@@ -68,92 +66,81 @@ class DataProcessor:
         """Validate FSRDC criteria"""
         # Check if any criteria is met
         criteria_columns = [
-            'acknowledgments',
-            'data_descriptions',
-            'disclosure_review',
-            'rdc_mentions',
-            'dataset_mentions'
+            "acknowledgments",
+            "data_descriptions",
+            "disclosure_review",
+            "rdc_mentions",
+            "dataset_mentions",
         ]
-        
+
         return any(row[col] for col in criteria_columns if col in row)
 
     def _merge_data(self, scraped_data: pd.DataFrame, api_data: pd.DataFrame) -> pd.DataFrame:
         """Merge scraped data and API data"""
         # Merge based on title
-        merged_data = pd.merge(
-            scraped_data,
-            api_data,
-            on='title',
-            how='outer',
-            suffixes=('_scraped', '_api')
-        )
+        merged_data = pd.merge(scraped_data, api_data, on="title", how="outer", suffixes=("_scraped", "_api"))
         return merged_data
 
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean data"""
         # Remove duplicate rows
-        df = df.drop_duplicates(subset=['title'])
-        
+        df = df.drop_duplicates(subset=["title"])
+
         # Clean text columns
-        text_columns = ['title', 'abstract', 'authors']
+        text_columns = ["title", "abstract", "authors"]
         for col in text_columns:
             if col in df.columns:
                 df[col] = df[col].apply(self._clean_text)
-        
+
         # Handle missing values
-        df = df.fillna({
-            'abstract': '',
-            'authors': '[]',
-            'year': 0
-        })
-        
+        df = df.fillna({"abstract": "", "authors": "[]", "year": 0})
+
         return df
 
     def process(self, scraped_data: pd.DataFrame, api_data: pd.DataFrame) -> pd.DataFrame:
         """Process data and generate final dataset"""
         # Merge data
         merged_data = self._merge_data(scraped_data, api_data)
-        
+
         # Clean data
         cleaned_data = self._clean_data(merged_data)
-        
+
         # Validate uniqueness and FSRDC criteria
         final_data = []
         for _, row in cleaned_data.iterrows():
-            if self._check_uniqueness(row['title']) and self._validate_fsrdc_criteria(row):
+            if self._check_uniqueness(row["title"]) and self._validate_fsrdc_criteria(row):
                 final_data.append(row)
-        
+
         # Convert to DataFrame
         final_df = pd.DataFrame(final_data)
-        
+
         # Save processed data
-        final_df.to_csv('data/processed/final_research_outputs.csv', index=False)
-        
+        final_df.to_csv("data/processed/final_research_outputs.csv", index=False)
+
         # Output statistics
         logger.info(f"Total records processed: {len(cleaned_data)}")
         logger.info(f"Unique records after processing: {len(final_df)}")
-        
+
         return final_df
 
     def _is_duplicate(self, title: str, authors: List[str]) -> bool:
         """Check if research output is duplicate"""
         if self.existing_outputs.empty:
             return False
-            
+
         # Use fuzzy matching to check title
-        title_similarities = [fuzz.ratio(title.lower(), t.lower()) 
-                            for t in self.existing_outputs['Title']]
-        
+        title_similarities = [fuzz.ratio(title.lower(), t.lower()) for t in self.existing_outputs["Title"]]
+
         # If title similarity exceeds 85%, consider as duplicate
         if max(title_similarities) > 85:
             return True
-            
+
         # Check authors
         for _, row in self.existing_outputs.iterrows():
-            existing_authors = str(row['Authors']).lower().split(',')
+            existing_authors = str(row["Authors"]).lower().split(",")
             if any(author.lower() in existing_authors for author in authors):
                 return True
-                
+
         return False
 
     def _standardize_authors(self, authors: List[str]) -> str:
@@ -176,33 +163,33 @@ class DataProcessor:
         try:
             # Merge data
             all_data = pd.concat([scraped_data, api_data], ignore_index=True)
-            
+
             # Clean data
-            all_data['Title'] = all_data['Title'].apply(self._clean_text)
-            all_data['Authors'] = all_data['Authors'].apply(self._standardize_authors)
-            all_data['Abstract'] = all_data['Abstract'].apply(self._clean_text)
-            all_data['Year'] = all_data['Year'].apply(self._extract_year)
-            
+            all_data["Title"] = all_data["Title"].apply(self._clean_text)
+            all_data["Authors"] = all_data["Authors"].apply(self._standardize_authors)
+            all_data["Abstract"] = all_data["Abstract"].apply(self._clean_text)
+            all_data["Year"] = all_data["Year"].apply(self._extract_year)
+
             # Remove duplicates
             unique_outputs = []
             for _, row in all_data.iterrows():
-                if not self._is_duplicate(row['Title'], row['Authors'].split(', ')):
+                if not self._is_duplicate(row["Title"], row["Authors"].split(", ")):
                     unique_outputs.append(row)
-                    
+
             # Convert to DataFrame
             processed_df = pd.DataFrame(unique_outputs)
-            
+
             # Add processing timestamp
-            processed_df['Processed_At'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
+            processed_df["Processed_At"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
             # Save processed data
-            output_file = 'data/processed/processed_research_outputs.csv'
+            output_file = "data/processed/processed_research_outputs.csv"
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
             processed_df.to_csv(output_file, index=False)
-            
+
             logger.info(f"Successfully processed {len(processed_df)} unique research outputs")
             return processed_df
-            
+
         except Exception as e:
             logger.error(f"Error processing data: {e}")
             return pd.DataFrame()
@@ -211,87 +198,90 @@ class DataProcessor:
         """Generate data summary"""
         if processed_df.empty:
             return {}
-            
+
         summary = {
-            'total_outputs': len(processed_df),
-            'unique_authors': len(processed_df['Authors'].unique()),
-            'year_distribution': processed_df['Year'].value_counts().to_dict(),
-            'source_distribution': processed_df['Source'].value_counts().to_dict(),
-            'fsrdc_compliant': processed_df['fsrdc_compliant'].sum() if 'fsrdc_compliant' in processed_df.columns else 0
+            "total_outputs": len(processed_df),
+            "unique_authors": len(processed_df["Authors"].unique()),
+            "year_distribution": processed_df["Year"].value_counts().to_dict(),
+            "source_distribution": processed_df["Source"].value_counts().to_dict(),
+            "fsrdc_compliant": processed_df["fsrdc_compliant"].sum()
+            if "fsrdc_compliant" in processed_df.columns
+            else 0,
         }
-        
+
         # Save summary
-        summary_file = 'data/processed/research_outputs_summary.json'
-        with open(summary_file, 'w') as f:
+        summary_file = "data/processed/research_outputs_summary.json"
+        with open(summary_file, "w") as f:
             json.dump(summary, f, indent=4)
-            
+
         return summary
+
 
 def process_api_data():
     """Process API data"""
     try:
         logger.info("Starting API data processing...")
-        
+
         # 1. Read original API data
         df = pd.read_csv("data/processed/fsrdc5_related_papers_api_all.csv")
         logger.info(f"Original API data count: {len(df)}")
-        
+
         # 2. Deduplicate based on title
         deduplicate_self = df.drop_duplicates(subset=["title"], keep="first").reset_index(drop=True)
         logger.info(f"Data count after title deduplication: {len(deduplicate_self)}")
-        
+
         # Save first deduplication result
         deduplicate_self.to_csv("data/processed/deduplicate_self.csv", index=False)
-        
+
         # 3. Read cleaned_biblio.csv
         cleaned_biblio = pd.read_csv("data/raw/cleaned_biblio.csv")
         logger.info(f"Read cleaned_biblio.csv, total {len(cleaned_biblio)} records")
-        
+
         # 4. Use fuzzy matching for deduplication
         def is_similar(title1, title2, threshold=80):
             """Compare two titles for similarity, return True if similarity exceeds threshold"""
             if pd.isna(title1) or pd.isna(title2):
                 return False
             return fuzz.ratio(str(title1).lower(), str(title2).lower()) >= threshold
-        
+
         # Create mark list
         keep_rows = []
-        
+
         # Check each title
         for idx, row in deduplicate_self.iterrows():
             # Default to keep this row
             keep = True
             current_title = row["title"]
-            
+
             # Compare with each title in cleaned_biblio
             for biblio_title in cleaned_biblio["OutputTitle"]:
                 if is_similar(current_title, biblio_title):
                     # If similar title found, mark as not to keep
                     keep = False
                     break
-            
+
             keep_rows.append(keep)
-        
+
         # Filter data using mark list
         after_fuzzy_df = deduplicate_self[keep_rows].reset_index(drop=True)
         logger.info(f"Data count after fuzzy matching deduplication: {len(after_fuzzy_df)}")
-        
+
         # 5. Filter records containing 2 or more FSRDC keywords
         def count_keywords(keywords_str):
             """Calculate keyword count"""
             if pd.isna(keywords_str):
                 return 0
             return len(str(keywords_str).split(", "))
-        
+
         # Filter records
         after_fuzzy_df_larger2 = after_fuzzy_df[
             after_fuzzy_df["match_rdc_criteria_keywords"].apply(count_keywords) >= 2
         ].reset_index(drop=True)
         logger.info(f"Data count after keyword filtering: {len(after_fuzzy_df_larger2)}")
-        
+
         # Save first final result (without OpenAlex keywords)
         after_fuzzy_df_larger2.to_csv("data/processed/final_deduped_data.csv", index=False)
-        
+
         # 6. Get keywords from OpenAlex API
         def fetch_openalex_data_by_title(title):
             """Get data from OpenAlex"""
@@ -308,113 +298,115 @@ def process_api_data():
             except Exception as e:
                 logger.error(f"Error searching OpenAlex for '{title}': {e}")
                 return None
-        
+
         def get_openalex_keywords(work):
             """Extract keywords from OpenAlex work object"""
             if not work:
                 return "No keywords found"
-            
+
             concepts = work.get("concepts", [])
             if concepts:
                 return ", ".join([concept.get("display_name", "") for concept in concepts])
             return "No keywords found"
-        
+
         # Add OpenAlex keywords
         openalex_keywords = []
         logger.info("Starting to get keywords from OpenAlex...")
-        
+
         for idx, row in after_fuzzy_df_larger2.iterrows():
             logger.info(f"Processing record {idx+1}/{len(after_fuzzy_df_larger2)}")
             work = fetch_openalex_data_by_title(row["title"])
             keywords = get_openalex_keywords(work)
             openalex_keywords.append(keywords)
             time.sleep(0.12)  # Avoid request overload
-        
+
         after_fuzzy_df_larger2["Keywords"] = openalex_keywords
-        
+
         # Save final result (with OpenAlex keywords)
         after_fuzzy_df_larger2.to_csv("data/processed/final_deduped_data_withkeyword.csv", index=False)
-        
+
         # Output processing result statistics
         logger.info(f"Original merged data count: {len(df)}")
         logger.info(f"Data count after first deduplication: {len(deduplicate_self)}")
         logger.info(f"Data count after fuzzy matching deduplication: {len(after_fuzzy_df)}")
         logger.info(f"Data count after keyword filtering: {len(after_fuzzy_df_larger2)}")
         logger.info("OpenAlex keywords added")
-        
+
         return after_fuzzy_df_larger2
-        
+
     except Exception as e:
         logger.error(f"Error in API data processing: {str(e)}")
         raise
 
+
 def check_duplicates_with_research_outputs(scraped_data: pd.DataFrame, research_outputs: pd.DataFrame) -> pd.DataFrame:
     """
     Check if scraped data is duplicate with ResearchOutputs.xlsx data, using exact matching and fuzzy matching
-    
+
     Args:
         scraped_data: Data from web_scraping.py
         research_outputs: Data from ResearchOutputs.xlsx
-    
+
     Returns:
         Deduplicated DataFrame
     """
     logger.info("Starting to check duplicate data...")
-    
+
     # Ensure both DataFrames have title column
-    if 'title' not in scraped_data.columns:
+    if "title" not in scraped_data.columns:
         logger.error("scraped_data has no title column")
         return scraped_data
-    
-    if 'OutputTitle' not in research_outputs.columns:
+
+    if "OutputTitle" not in research_outputs.columns:
         logger.error("research_outputs has no OutputTitle column")
         return scraped_data
-    
+
     # 1. First perform exact deduplication based on title
     scraped_data = scraped_data.drop_duplicates(subset=["title"], keep="first").reset_index(drop=True)
     logger.info(f"Data count after exact deduplication: {len(scraped_data)}")
-    
+
     # 2. Use fuzzy matching for deduplication
     def is_similar(title1, title2, threshold=80):
         """Compare two titles for similarity, return True if similarity exceeds threshold"""
         if pd.isna(title1) or pd.isna(title2):
             return False
         return fuzz.ratio(str(title1).lower(), str(title2).lower()) >= threshold
-    
+
     # Create mark list
     keep_rows = []
-    
+
     # Check each title
     for idx, row in scraped_data.iterrows():
         # Default to keep this row
         keep = True
         current_title = row["title"]
-        
+
         # Compare with each title in research_outputs
         for biblio_title in research_outputs["OutputTitle"]:
             if is_similar(current_title, biblio_title):
                 # If similar title found, mark as not to keep
                 keep = False
                 break
-        
+
         keep_rows.append(keep)
-    
+
     # Filter data using mark list
     deduplicated_data = scraped_data[keep_rows].reset_index(drop=True)
-    
+
     # Record deduplication result
     logger.info(f"Original data count: {len(scraped_data)}")
     logger.info(f"Data count after fuzzy matching deduplication: {len(deduplicated_data)}")
-    
+
     # Save duplicate data to separate file
     duplicate_data = scraped_data[~scraped_data.index.isin(deduplicated_data.index)]
     if not duplicate_data.empty:
-        output_file = 'data/processed/duplicate_data.csv'
+        output_file = "data/processed/duplicate_data.csv"
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         duplicate_data.to_csv(output_file, index=False)
         logger.info(f"Duplicate data saved to {output_file}")
-    
+
     return deduplicated_data
+
 
 def get_paper_metadata(title_query: str, sleep_time: float = 0.15):
     """Get paper metadata based on paper title"""
@@ -492,10 +484,11 @@ def get_paper_metadata(title_query: str, sleep_time: float = 0.15):
         print(f"Error fetching metadata for {title_query}: {e}")
         return None
 
+
 def enrich_cleaned_data(input_file: str, output_file: str, sleep_time: float = 0.15):
     """Enrich data from input CSV with metadata from OpenAlex"""
     logger.info(f"Starting to process cleaned data: {input_file}")
-    
+
     # Read input CSV
     df = pd.read_csv(input_file)
 
@@ -513,7 +506,7 @@ def enrich_cleaned_data(input_file: str, output_file: str, sleep_time: float = 0
         "detailed_affiliations",
         "original_keywords",
         "original_agency",
-        "keywords"
+        "keywords",
     ]
 
     with open(output_file, "w", newline="", encoding="utf-8") as csvfile:
@@ -539,7 +532,7 @@ def enrich_cleaned_data(input_file: str, output_file: str, sleep_time: float = 0
                 "detailed_affiliations": "",
                 "original_keywords": row.get("Keywords", ""),
                 "original_agency": row.get("Agency", ""),
-                "keywords": ""
+                "keywords": "",
             }
 
             # Only try to get metadata if title is not empty or nan
@@ -557,6 +550,7 @@ def enrich_cleaned_data(input_file: str, output_file: str, sleep_time: float = 0
             writer.writerow(output_row)
 
     logger.info(f"Cleaned data enrichment completed, results saved to: {output_file}")
+
 
 def enrich_scraped_data(input_file: str, output_file: str, sleep_time: float = 0.15):
     """Enrich scraped data with metadata from OpenAlex"""
@@ -604,13 +598,14 @@ def enrich_scraped_data(input_file: str, output_file: str, sleep_time: float = 0
 
     print(f"\nProcess completed. Results saved to {output_file}")
 
+
 def standardize_authors(df: pd.DataFrame) -> pd.DataFrame:
     """
     Standardize author information across different formats into a single authors column.
-    
+
     Args:
         df: DataFrame containing author information
-    
+
     Returns:
         DataFrame with standardized authors column
     """
@@ -730,6 +725,7 @@ def merge_enriched_data(
 
     return merged_df
 
+
 def process_data():
     """
     Main processing function
@@ -737,46 +733,46 @@ def process_data():
     try:
         # 1. Read ResearchOutputs.xlsx
         logger.info("Reading ResearchOutputs.xlsx...")
-        research_outputs = pd.read_excel('data/raw/ResearchOutputs.xlsx')
+        research_outputs = pd.read_excel("data/raw/ResearchOutputs.xlsx")
         logger.info(f"ResearchOutputs.xlsx data count: {len(research_outputs)}")
-        
+
         # 2. Read web scraping data and deduplicate
         logger.info("Reading web scraping data...")
-        web_data = pd.read_csv('data/processed/scraped_data.csv')
+        web_data = pd.read_csv("data/processed/scraped_data.csv")
         logger.info(f"Original web scraping data count: {len(web_data)}")
-        
+
         # Deduplicate web scraping data
         web_data_deduped = check_duplicates_with_research_outputs(web_data, research_outputs)
         logger.info(f"Web scraping data count after deduplication: {len(web_data_deduped)}")
-        
+
         # 3. Process API data (including keyword deduplication)
         logger.info("Starting API data processing...")
         api_data_deduped = process_api_data()
         logger.info(f"API data count after deduplication: {len(api_data_deduped)}")
-        
+
         # 4. Enrich metadata
         logger.info("Starting metadata enrichment...")
         enrich_cleaned_data(
             input_file="data/raw/cleaned_data.csv",
             output_file="data/processed/enriched_cleaned_data_openalex.csv",
-            sleep_time=0.12
+            sleep_time=0.12,
         )
-        
+
         enrich_scraped_data(
             input_file="data/processed/deduplicated_scraped_data.csv",
             output_file="data/processed/enriched_scraped_data_openalex.csv",
-            sleep_time=0.12
+            sleep_time=0.12,
         )
-        
+
         # 5. Merge all data
         logger.info("Starting data merging...")
         merged_df = merge_enriched_data(
             enriched_scraped_path="data/processed/enriched_scraped_data_openalex.csv",
             enriched_cleaned_path="data/processed/enriched_cleaned_data_openalex.csv",
             enriched_api_path="data/processed/final_deduped_data_withkeyword.csv",
-            output_path="data/processed/merged_3_enriched_data.csv"
+            output_path="data/processed/merged_3_enriched_data.csv",
         )
-        
+
         # 6. Print detailed statistics
         logger.info("\nData processing statistics:")
         logger.info(f"1. ResearchOutputs.xlsx data count: {len(research_outputs)}")
@@ -784,12 +780,13 @@ def process_data():
         logger.info(f"3. Web scraping data count after deduplication: {len(web_data_deduped)}")
         logger.info(f"4. API data count after deduplication: {len(api_data_deduped)}")
         logger.info(f"5. Final merged data count: {len(merged_df)}")
-        
+
         logger.info("Data processing completed!")
-        
+
     except Exception as e:
         logger.error(f"Error occurred during data processing: {str(e)}")
         raise
+
 
 def fill_authors_from_biblio():
     """
@@ -801,55 +798,58 @@ def fill_authors_from_biblio():
         if not os.path.exists(merged_data_path):
             logging.error(f"Merged data file not found: {merged_data_path}")
             return 0
-        
+
         merged_df = pd.read_csv(merged_data_path)
         logging.info(f"Read merged data with {len(merged_df)} rows")
-        
+
         # Read the cleaned bibliography
         biblio_path = os.path.join("data/raw", "cleaned_biblio.csv")
         if not os.path.exists(biblio_path):
             logging.error(f"Bibliography file not found: {biblio_path}")
             return 0
-        
+
         biblio_df = pd.read_csv(biblio_path)
         logging.info(f"Read bibliography with {len(biblio_df)} rows")
-        
+
         # Process Authors column: replace commas with semicolons and remove 'and' words
-        biblio_df['Authors'] = biblio_df['Authors'].apply(lambda x: 
-            str(x).replace(',', ';').replace(' and ', ';').replace(' and', ';').replace('and ', ';') 
-            if pd.notna(x) else '')
-        
+        biblio_df["Authors"] = biblio_df["Authors"].apply(
+            lambda x: str(x).replace(",", ";").replace(" and ", ";").replace(" and", ";").replace("and ", ";")
+            if pd.notna(x)
+            else ""
+        )
+
         # Create a mapping from title to authors
-        title_to_authors = dict(zip(biblio_df['OutputTitle'], biblio_df['Authors']))
-        
+        title_to_authors = dict(zip(biblio_df["OutputTitle"], biblio_df["Authors"]))
+
         # Count how many titles match
         matched_titles = 0
         filled_authors = 0
-        
+
         # Fill authors for matching titles
         for idx, row in merged_df.iterrows():
-            title = row['title']
+            title = row["title"]
             if title in title_to_authors:
                 matched_titles += 1
-                if pd.isna(merged_df.at[idx, 'authors']) or merged_df.at[idx, 'authors'] == '':
-                    merged_df.at[idx, 'authors'] = title_to_authors[title]
+                if pd.isna(merged_df.at[idx, "authors"]) or merged_df.at[idx, "authors"] == "":
+                    merged_df.at[idx, "authors"] = title_to_authors[title]
                     filled_authors += 1
-        
+
         logging.info(f"Matched {matched_titles} titles between the two datasets")
         logging.info(f"Filled {filled_authors} empty author fields")
-        
+
         # Save the updated dataframe
         output_path = os.path.join("data/processed", "New_And_Original_ResearchOutputs.csv")
         merged_df.to_csv(output_path, index=False)
         logging.info(f"Saved updated data to {output_path}")
-        
+
         return filled_authors
-        
+
     except Exception as e:
         logging.error(f"Error filling authors from bibliography: {str(e)}")
         return 0
 
+
 if __name__ == "__main__":
-    process_data() 
+    process_data()
     filled_authors = fill_authors_from_biblio()
-    logging.info(f"Step 7: Added {filled_authors} authors from bibliography") 
+    logging.info(f"Step 7: Added {filled_authors} authors from bibliography")

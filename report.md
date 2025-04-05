@@ -37,183 +37,109 @@ This report details our implementation of each stage of the analysis pipeline, t
 
 ## 1. Web Scraping
 
-Our web scraping approach focuses on extracting metadata from publicly available sources to identify potential FSRDC-related research outputs. The implementation follows a systematic process to ensure comprehensive coverage while respecting website limitations.
+Our web scraping approach focuses on extracting research output metadata from the Federal Statistical Research Data Centers (FSRDC) website. The implementation uses a systematic process with robust error handling and rate limiting to ensure reliable data collection.
 
-### 1.1 Data Source Selection
+### 1.1 Implementation Architecture 
 
-We identified several key sources for web scraping:
+The web scraping component is implemented in `web_scraping.py` with a `WebScraper` class that handles:
 
-1. **GitHub Repositories**: FSRDC projects often maintain GitHub repositories containing project information, including titles, PIs, and status updates.
+1. **Base Configuration**
+   - Targets the FSRDC research outputs page (fsrdc.org/research-outputs/)
+   - Uses configurable request headers to identify as a legitimate client
+   - Implements output paths for both successful and failed scraping attempts
 
-2. **Institutional Websites**: RDC websites (e.g., Michigan RDC, Texas RDC) often list research outputs and publications.
+2. **Robust Request Handling**
+   - Employs exponential backoff retry mechanism for failed requests
+   - Implements rate limiting to avoid server overload
+   - Maintains detailed logging of the scraping process
 
-3. **Research Institution Pages**: University departments and research centers frequently highlight FSRDC-related research.
+3. **Content Extraction**
+   - Uses BeautifulSoup for HTML parsing
+   - Extracts structured metadata including:
+     - Project titles
+     - Abstracts
+     - Author information
+     - Publication years
+     - Keywords
 
-4. **Conference Proceedings**: Academic conferences often publish papers that use FSRDC data.
+### 1.2 Data Collection Process
 
-### 1.2 Implementation Details
-
-The `web_scraping.py` script implements our web scraping functionality with the following key components:
-
-```python
-def scrape_research_outputs():
-    """Main function to scrape research outputs from various sources"""
-    results = []
-    
-    # Scrape from GitHub repositories
-    github_results = scrape_github_repos()
-    results.extend(github_results)
-    
-    # Scrape from institutional websites
-    institution_results = scrape_institution_sites()
-    results.extend(institution_results)
-    
-    # Scrape from conference proceedings
-    conference_results = scrape_conference_proceedings()
-    results.extend(conference_results)
-    
-    # Save results to CSV
-    save_to_csv(results, "data/processed/scraped_data.csv")
-    
-    return results
-```
-
-For each source, we implemented specific scraping functions that:
-
-1. **Handle HTTP Errors**: Implement robust error handling to manage connection issues, timeouts, and rate limiting.
+The scraper follows a two-stage process:
 
 ```python
-def safe_request(url, headers=None, max_retries=3, delay=1):
-    """Make a safe HTTP request with retries and delays"""
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            time.sleep(delay)  # Respect rate limiting
-            return response
-        except requests.exceptions.RequestException as e:
-            if attempt == max_retries - 1:
-                logger.error(f"Failed to fetch {url} after {max_retries} attempts: {e}")
-                return None
-            time.sleep(delay * (attempt + 1))  # Exponential backoff
+def scrape_all(self):
+    """Main scraping process"""
+    # 1. Fetch main page and extract project links
+    content = self.get_page_content(self.base_url)
+    soup = BeautifulSoup(content, "html.parser")
+    project_links = soup.find_all("a", class_="project-link")
+
+    # 2. Process individual project pages
+    for link in project_links:
+        project_url = link.get("href")
+        if project_url:
+            project_data = self.parse_project_page(project_url)
+            # Store and process results...
 ```
 
-2. **Parse HTML Content**: Use BeautifulSoup to extract relevant information from HTML pages.
+### 1.3 Error Handling and Quality Control
 
-```python
-def parse_html_content(html_content):
-    """Parse HTML content to extract research output metadata"""
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    # Extract title
-    title = extract_title(soup)
-    
-    # Extract authors
-    authors = extract_authors(soup)
-    
-    # Extract abstract
-    abstract = extract_abstract(soup)
-    
-    # Extract affiliations
-    affiliations = extract_affiliations(soup)
-    
-    return {
-        'title': title,
-        'authors': authors,
-        'abstract': abstract,
-        'affiliations': affiliations
-    }
-```
+The implementation includes several quality control measures:
 
-3. **Clean and Normalize Data**: Apply regex and text processing techniques to clean and standardize the extracted data.
+1. **Request Retry Logic**
+   - Maximum of 3 retry attempts per request
+   - Exponential backoff between attempts (1, 2, 4 seconds)
+   - Detailed error logging for failed requests
 
-```python
-def clean_text(text):
-    """Clean and normalize text data"""
-    if not text:
-        return ""
-    
-    # Remove extra whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # Remove special characters
-    text = re.sub(r'[^\w\s.,;:()\-]', '', text)
-    
-    # Normalize quotes
-    text = text.replace('"', '"').replace('"', '"')
-    
-    return text
-```
+2. **Data Validation**
+   - Checks for missing or malformed content
+   - Maintains separate tracking of failed scraping attempts
+   - Saves failed project information for later analysis
 
-### 1.3 Selection Criteria Implementation
+3. **Output Management**
+   - Structured CSV output for successful scrapes
+   - Separate logging of failed attempts
+   - Maintains processing logs for debugging
 
-We implemented the selection criteria specified in the project requirements to ensure that only relevant research outputs are included:
+### 1.4 Integration with Processing Pipeline
 
-```python
-def is_fsrdc_related(metadata):
-    """Check if research output is related to FSRDC based on selection criteria"""
-    # Check acknowledgments
-    if has_fsrdc_acknowledgment(metadata):
-        return True
-    
-    # Check data description
-    if has_restricted_data_reference(metadata):
-        return True
-    
-    # Check disclosure review
-    if has_disclosure_review_statement(metadata):
-        return True
-    
-    # Check RDC mentions
-    if has_rdc_mention(metadata):
-        return True
-    
-    # Check dataset mentions
-    if has_dataset_mention(metadata):
-        return True
-    
-    return False
-```
+The scraped data undergoes several processing steps after collection:
 
-Each criterion is implemented as a separate function that checks for specific patterns in the metadata:
+1. **Initial Processing** (`data_processing.py`)
+   - Deduplication against existing research outputs
+   - Standardization of author names and institutions
+   - Enrichment with additional metadata
 
-```python
-def has_fsrdc_acknowledgment(metadata):
-    """Check if metadata contains FSRDC acknowledgment"""
-    acknowledgment_keywords = [
-        "census bureau", "fsrdc", "research data center", "rdc",
-        "federal statistical research data center"
-    ]
-    
-    text = f"{metadata.get('title', '')} {metadata.get('abstract', '')}"
-    text = text.lower()
-    
-    return any(keyword in text for keyword in acknowledgment_keywords)
+2. **API Integration** (`api_integration.py`)
+   - Enhancement with OpenAlex metadata
+   - Addition of citation information
+   - Keyword and institution standardization
 
-def has_dataset_mention(metadata):
-    """Check if metadata mentions specific FSRDC datasets"""
-    # Load dataset names from Excel sheet
-    dataset_names = load_dataset_names()
-    
-    text = f"{metadata.get('title', '')} {metadata.get('abstract', '')}"
-    text = text.lower()
-    
-    return any(dataset.lower() in text for dataset in dataset_names)
-```
+3. **Final Validation** (`data_processing.py`)
+   - FSRDC relevance verification
+   - Data completeness checks
+   - Format standardization for graph analysis
 
-### 1.4 Results and Challenges
+### 1.5 Results and Impact
 
-Our web scraping implementation successfully extracted metadata from 943 potential FSRDC-related research outputs. The process encountered several challenges:
+The web scraping component successfully:
 
-1. **Rate Limiting**: Many websites implement rate limiting to prevent automated scraping. We addressed this by implementing delays between requests and using exponential backoff for retries.
+1. **Data Collection**
+   - Extracts metadata from the FSRDC research outputs page
+   - Captures detailed project information
+   - Maintains data quality through robust error handling
 
-2. **HTML Structure Variations**: Different websites use different HTML structures, making it challenging to create a one-size-fits-all scraping solution. We implemented source-specific parsers to handle these variations.
+2. **Integration**
+   - Provides structured data for the processing pipeline
+   - Enables enrichment through API integration
+   - Supports comprehensive research output analysis
 
-3. **Data Completeness**: Not all sources provide complete metadata. We implemented fallback mechanisms to maximize data completeness.
+3. **Quality Assurance**
+   - Tracks failed scraping attempts for manual review
+   - Maintains detailed processing logs
+   - Enables continuous improvement of the scraping process
 
-4. **False Positives**: Some research outputs mention FSRDC or related terms without actually using FSRDC data. We refined our selection criteria to minimize false positives.
-
-After applying our selection criteria and deduplication, we identified 652 unique FSRDC-related research outputs from web scraping.
+This implementation provides a reliable foundation for discovering and analyzing FSRDC research outputs, feeding into subsequent stages of data processing and analysis.
 
 ## 2. API Integration
 
@@ -232,32 +158,31 @@ Our approach to discovering new FSRDC research outputs builds on Project 1's dat
 ### 2.1 API Integration Strategy
 
 We chose OpenAlex API for this process because it provides:
-- Comprehensive citation data
-- Rich metadata including abstracts and affiliations
-- Free access with good rate limits
-- Structured data about institutions and authors
+- Comprehensive paper metadata including abstracts and affiliations
+- Standardized institution and author information
+- Free access with reasonable rate limits
+- Structured data format
 
-The `api_integration.py` script implements this strategy through three main components:
+The `api_integration.py` script implements this strategy through several key components:
 
-1. **Seed Paper Processing**
-   - Reads the cleaned bibliography as seed papers
-   - Sorts by year to prioritize recent papers
-   - Processes each paper's citation network
+1. **Data Processing Pipeline**
+   - Processes papers from the cleaned bibliography
+   - Implements rate limiting (0.15s between requests)
+   - Handles API errors with robust error checking
 
-2. **Forward Citation Analysis**
-   - For each seed paper:
-     - Retrieves all citing papers
-     - Analyzes each citing paper for FSRDC relevance
-     - Captures complete metadata for relevant papers
+2. **Metadata Enhancement**
+   - Enriches papers with complete metadata
+   - Reconstructs abstracts from OpenAlex's inverted index format
+   - Standardizes author and institution information
 
-3. **FSRDC Relevance Filtering**
-   - Applies multiple criteria to ensure papers are FSRDC-related
-   - Checks multiple metadata fields for relevance
-   - Uses carefully selected keywords based on project requirements
+3. **FSRDC Relevance Verification**
+   - Validates papers against FSRDC-related criteria
+   - Uses carefully selected keywords for relevance checking
+   - Maintains detailed matching records
 
 ### 2.2 Keyword Selection Strategy
 
-The keywords were carefully selected to align with project requirements:
+The implementation uses a comprehensive set of keywords to identify FSRDC-related research:
 
 ```python
 fsrdc_keywords = [
@@ -289,15 +214,12 @@ The keywords were selected to capture mentions of key federal statistical agenci
 
 ### 2.3 Data Collection Process
 
-The `api_integration.py` script is designed to collect and process research paper data using the OpenAlex API. Here's a detailed breakdown of its functionality:
+The metadata collection process involves several key steps:
 
-### 2.3.1 Core Functions
-
-1. **Abstract Reconstruction** (`reconstruct_abstract`)
-   - OpenAlex provides abstracts in an inverted index format
-   - Function reconstructs readable text from the index
+1. **Abstract Processing**
    ```python
    def reconstruct_abstract(inverted_index):
+       """Reconstruct abstract from OpenAlex's inverted index format"""
        if not isinstance(inverted_index, dict) or not inverted_index:
            return "No abstract available."
        
@@ -317,7 +239,6 @@ The `api_integration.py` script is designed to collect and process research pape
      - Basic paper information (title, year, DOI)
      - Author information and affiliations
      - Abstract and keywords
-     - Citation data
    ```python
    def get_paper_metadata(title_query: str, sleep_time: float = 0.15):
        url = f"https://api.openalex.org/works?search={title_query.replace(' ', '%20')}"
@@ -489,148 +410,197 @@ Based on these considerations, we opted to use the OpenAlex API exclusively. Thi
 
 ## 3. Data Processing and Entity Resolution
 
-After collecting data from web scraping and API integration, we implemented a comprehensive data processing pipeline to ensure data quality and relevance.
+After collecting data from web scraping and API integration, we implemented a comprehensive data processing pipeline in `data_processing.py`. This pipeline ensures data quality, relevance, and standardization by cleaning, deduplicating, enriching, and merging data from multiple sources before the final graph analysis stage.
 
 ### 3.1 Data Loading and Initial Cleaning
 
-The first step in our data processing pipeline is loading and cleaning the raw data:
+The pipeline begins by loading data from three primary sources:
+- Web scraping results (`scraped_data.csv`)
+- API integration results (`fsrdc5_related_papers_api_all.csv`)
+- The original 2024 FSRDC dataset (`ResearchOutputs.xlsx`) and a cleaned version (`cleaned_biblio.csv`) used for deduplication and enrichment.
 
-```python
-def load_and_clean_data():
-    """Load and clean data from various sources"""
-    # Load web scraping data
-    scraped_data = pd.read_csv("data/processed/scraped_data.csv")
-    
-    # Load API data
-    api_data = pd.read_csv("data/processed/fsrdc5_related_papers_api_all.csv")
-    
-    # Load 2024 dataset for comparison
-    dataset_2024 = pd.read_excel("data/raw/ResearchOutputs.xlsx")
-    
-    # Clean data
-    cleaned_scraped_data = clean_dataframe(scraped_data)
-    cleaned_api_data = clean_dataframe(api_data)
-    
-    return cleaned_scraped_data, cleaned_api_data, dataset_2024
-```
-
-The cleaning process includes:
-- Handling missing values
-- Standardizing formats (dates, names, etc.)
-- Removing duplicates within each dataset
+Initial cleaning involves handling missing values, standardizing basic formats, and logging operations for traceability.
 
 ### 3.2 Entity Resolution and Deduplication
 
-We implemented a multi-stage deduplication process to ensure uniqueness:
+A multi-stage deduplication process is applied to ensure uniqueness and avoid overlap with existing datasets:
 
-1. **Exact Matching**: Identify exact duplicates based on title, DOI, or other unique identifiers.
+1.  **API Data Deduplication (`process_api_data`)**:
+    *   **Self-Deduplication**: Removes exact duplicates based on 'title' within the API-derived dataset.
+    *   **Cross-Dataset Fuzzy Matching**: Compares API titles against `cleaned_biblio.csv` using fuzzy matching (`is_similar` function with threshold 80) to remove papers already present in the cleaned bibliography.
+    ```python
+    # Within process_api_data function
+    deduplicate_self = df.drop_duplicates(subset=["title"], keep="first")
+    # ... fuzzy matching logic against cleaned_biblio ...
+    after_fuzzy_df = deduplicate_self[keep_rows].reset_index(drop=True)
+    ```
 
-```python
-def remove_exact_duplicates(df, subset=["title"]):
-    """Remove exact duplicates based on specified columns"""
-    return df.drop_duplicates(subset=subset, keep="first").reset_index(drop=True)
-```
+2.  **Scraped Data Deduplication (`check_duplicates_with_research_outputs`)**:
+    *   Compares scraped data titles against the original `ResearchOutputs.xlsx` using both exact and fuzzy matching to filter out duplicates.
+    ```python
+    def check_duplicates_with_research_outputs(scraped_data, research_outputs):
+        """Check for duplicates between scraped data and ResearchOutputs.xlsx"""
+        # ... exact and fuzzy matching logic ...
+        deduplicated_data = scraped_data[keep_rows].reset_index(drop=True)
+        # Save removed duplicates for review
+        duplicate_data = scraped_data[~scraped_data.index.isin(deduplicated_data.index)]
+        if not duplicate_data.empty:
+            duplicate_data.to_csv('data/processed/duplicate_data.csv', index=False)
+        return deduplicated_data
+    ```
 
-2. **Fuzzy Matching**: Handle variations in record formatting using fuzzy string matching.
+### 3.3 FSRDC Relevance Filtering (API Data)
 
-```python
-def is_similar(title1, title2, threshold=80):
-    """Compare similarity between two titles"""
-    if pd.isna(title1) or pd.isna(title2):
-        return False
-    return fuzz.ratio(str(title1).lower(), str(title2).lower()) >= threshold
-```
-
-3. **Cross-Reference with 2024 Dataset**: Ensure that research outputs already reported in the 2024 dataset are excluded.
-
-```python
-def remove_2024_duplicates(df, dataset_2024):
-    """Remove entries that are already in the 2024 dataset"""
-keep_rows = []
-
-    for idx, row in df.iterrows():
-    keep = True
-    current_title = row["title"]
-
-        # Compare with each title in 2024 dataset
-        for biblio_title in dataset_2024["OutputTitle"]:
-        if is_similar(current_title, biblio_title):
-            keep = False
-            break
-
-    keep_rows.append(keep)
-
-    return df[keep_rows].reset_index(drop=True)
-```
-
-### 3.3 FSRDC Relevance Validation
-
-We implemented a comprehensive validation process to ensure that all research outputs in our dataset are indeed FSRDC-related:
-
-1. **Keyword Analysis**: Count and analyze FSRDC-related keywords in each paper.
+The deduplicated API data undergoes a relevance check based on keywords identified during the API integration step:
 
 ```python
+# Within process_api_data function
 def count_keywords(keywords_str):
-    """Count number of keywords by splitting on ', '"""
-    if pd.isna(keywords_str):
-        return 0
+    """Calculate keyword count"""
+    if pd.isna(keywords_str): return 0
     return len(str(keywords_str).split(", "))
-```
 
-2. **Multi-Field Validation**: Check multiple fields (title, abstract, acknowledgments, etc.) for FSRDC relevance.
-
-```python
-def validate_fsrdc_relevance(df):
-    """Validate FSRDC relevance of research outputs"""
-# Filter records with 2 or more keywords
-    relevant_df = df[
-        df["match_rdc_criteria_keywords"].apply(count_keywords) >= 2
+# Filter records with 2 or more matching keywords
+after_fuzzy_df_larger2 = after_fuzzy_df[
+    after_fuzzy_df["match_rdc_criteria_keywords"].apply(count_keywords) >= 2
 ].reset_index(drop=True)
-
-    return relevant_df
+logger.info(f"Data count after keyword filtering: {len(after_fuzzy_df_larger2)}")
+# Save this intermediate result
+after_fuzzy_df_larger2.to_csv("data/processed/final_deduped_data.csv", index=False)
 ```
+Only papers matching at least two FSRDC-related keywords are retained for further processing.
 
-### 3.4 Data Structure and Additional Attributes
+### 3.4 Data Enrichment via OpenAlex
 
-We chose to use a comprehensive data structure that includes the following attributes:
+To ensure comprehensive metadata, we enrich multiple datasets using the OpenAlex API:
 
-1. **Basic Metadata**:
-   - Title
-   - Authors
-   - Publication Year
-   - DOI
-   - Abstract
+1.  **API Data Enrichment (`process_api_data`)**: The filtered API data (`final_deduped_data.csv`) is further enriched by fetching and adding standardized keywords directly from OpenAlex.
+    ```python
+    # Within process_api_data function
+    def fetch_openalex_data_by_title(title): # Fetches work object
+    def get_openalex_keywords(work): # Extracts keywords from concepts
+    # ... loop through after_fuzzy_df_larger2 ...
+    work = fetch_openalex_data_by_title(row["title"])
+    keywords = get_openalex_keywords(work)
+    openalex_keywords.append(keywords)
+    # ... add 'Keywords' column and save ...
+    after_fuzzy_df_larger2.to_csv("data/processed/final_deduped_data_withkeyword.csv", index=False)
+    ```
 
-2. **FSRDC-Specific Information**:
-   - Matching FSRDC Criteria Keywords
-   - Dataset Information
-   - RDC Mentions
+2.  **Cleaned Data Enrichment (`enrich_cleaned_data`)**: Enriches a separate cleaned dataset (`cleaned_data.csv`) with OpenAlex metadata (DOI, keywords, affiliations).
+    ```python
+    def enrich_cleaned_data(input_file: str, output_file: str, sleep_time: float = 0.15):
+        """Enrich data from input CSV with metadata from OpenAlex"""
+        # ... reads input, defines output fields ...
+        for idx, row in tqdm(df.iterrows(), ...):
+            metadata = get_paper_metadata(title, sleep_time) # Fetches DOI, keywords, affiliations
+            if metadata:
+                output_row.update(metadata)
+            writer.writerow(output_row)
+        # Saves to enriched_cleaned_data_openalex.csv
+    ```
 
-3. **Institutional Information**:
-   - Author Affiliations
-   - Institution Display Names
-   - Raw Affiliation Strings
+3.  **Scraped Data Enrichment (`enrich_scraped_data`)**: Enriches the deduplicated scraped data (`deduplicated_scraped_data.csv`) similarly with OpenAlex metadata.
+    ```python
+    def enrich_scraped_data(input_file: str, output_file: str, sleep_time: float = 0.15):
+        """Enrich scraped data with metadata from OpenAlex"""
+        # ... reads input, defines output fields ...
+        for idx, row in tqdm(df.iterrows(), ...):
+            metadata = get_paper_metadata(title, sleep_time) # Fetches DOI, keywords, affiliations
+            if metadata:
+                output_row.update(metadata)
+            writer.writerow(output_row)
+        # Saves to enriched_scraped_data_openalex.csv
+    ```
+This multi-pronged enrichment ensures that data from all sources benefits from the structured information available in OpenAlex.
 
-4. **Additional Context**:
-   - Citation Count
-   - Source (Web Scraping or API)
-   - Processing Timestamp
+### 3.5 Author and Institution Standardization
 
-This structure ensures that our dataset provides comprehensive information about each research output while maintaining clarity and usability.
+Standardization is applied consistently across datasets, primarily during the merging phase:
 
-### 3.5 Results and Impact
+1.  **Author Name Standardization (`standardize_authors`)**: Consolidates author names from various fields (`authors`, `display_author_names`, `raw_author_names`) into a single semicolon-separated 'authors' column.
+    ```python
+    def standardize_authors(df: pd.DataFrame) -> pd.DataFrame:
+        """Standardize author information across different formats into a single authors column."""
+        # ... handles list-like strings and combines author fields ...
+        return df
+    ```
 
-Our data processing pipeline successfully:
+2.  **Institution Name Normalization**: While a normalization function (`_normalize_institution_name`) exists, it's primarily used later during graph construction (`graph_analysis.py`) rather than directly in the main data processing flow of `data_processing.py`.
 
-1. **Reduced Duplicates**: Eliminated 574 exact duplicate titles and 228 similar titles from the original bibliography.
+### 3.6 Final Data Merging and Refinement
 
-2. **Ensured Uniqueness**: Verified that all research outputs in our dataset are not already included in the 2024 dataset.
+The pipeline culminates in merging the three processed and enriched datasets, followed by a final author refinement step:
 
-3. **Validated Relevance**: Confirmed that all research outputs meet the FSRDC relevance criteria.
+1.  **Merging Enriched Datasets (`merge_enriched_data`)**: Combines the enriched scraped, cleaned, and API datasets. This step also involves crucial column cleaning and renaming to create a unified schema.
+    ```python
+    def merge_enriched_data(
+        enriched_scraped_path: str, # enriched_scraped_data_openalex.csv
+        enriched_cleaned_path: str, # enriched_cleaned_data_openalex.csv
+        enriched_api_path: str,     # final_deduped_data_withkeyword.csv
+        output_path: str = "data/processed/merged_3_enriched_data.csv",
+    ) -> pd.DataFrame:
+        """Merge three enriched datasets while preserving all columns."""
+        # ... reads dataframes ...
+        # Standardize authors before merging
+        scraped_df = standardize_authors(scraped_df)
+        cleaned_df = standardize_authors(cleaned_df)
+        api_df = standardize_authors(api_df)
+        # Perform column drops and renames for standardization
+        # e.g., drop 'datasets', rename 'project_end_year' to 'year', etc.
+        # ...
+        merged_df = pd.concat([scraped_df, cleaned_df, api_df], ignore_index=True)
+        merged_df.to_csv(output_path, index=False)
+        return merged_df
+    ```
 
-4. **Enhanced Metadata**: Added comprehensive metadata from OpenAlex API to enrich the dataset.
+2.  **Bibliography Author Filling (`fill_authors_from_biblio`)**: After merging, this function attempts to fill any remaining missing author information in the merged dataset (`merged_3_enriched_data.csv`) by looking up titles in the `cleaned_biblio.csv`. The final, most complete dataset is saved as `New_And_Original_ResearchOutputs.csv`.
+    ```python
+    def fill_authors_from_biblio():
+        """Fill authors from cleaned_biblio.csv into merged_3_enriched_data.csv"""
+        merged_df = pd.read_csv("data/processed/merged_3_enriched_data.csv")
+        biblio_df = pd.read_csv("data/raw/cleaned_biblio.csv")
+        # ... processes biblio authors and creates title->author map ...
+        for idx, row in merged_df.iterrows():
+            title = row['title']
+            if title in title_to_authors:
+                # ... fills missing authors ...
+        # Saves final dataset
+        merged_df.to_csv("data/processed/New_And_Original_ResearchOutputs.csv", index=False)
+    ```
 
-The final dataset contains 982 unique FSRDC-related research outputs, each with at least 2 FSRDC relevance indicators and complete metadata for further analysis.
+### 3.7 Results and Output Files
+
+The `data_processing.py` script generates several important output files throughout its processing stages:
+
+1. **Deduplication Results**:
+   - `deduplicate_self.csv`: Initial self-deduplicated API data
+   - `duplicate_data.csv`: Records identified as duplicates during scraping deduplication
+   - `final_deduped_data.csv`: API data after both deduplication and keyword filtering
+
+2. **Enriched Data Files**:
+   - `enriched_scraped_data_openalex.csv`: Scraped data enriched with OpenAlex metadata
+   - `enriched_cleaned_data_openalex.csv`: Cleaned data enriched with OpenAlex metadata
+   - `final_deduped_data_withkeyword.csv`: API data enriched with OpenAlex keywords
+
+3. **Merged and Final Datasets**:
+   - `merged_3_enriched_data.csv`: Combined dataset from all three enriched sources
+   - `New_And_Original_ResearchOutputs.csv`: Final dataset with filled author information
+
+
+Each output file serves a specific purpose:
+- **Deduplication files** enable traceability of removed duplicates
+- **Enriched files** preserve the enhanced metadata for each data source
+- **Merged files** provide both intermediate and final combined datasets
+- **Summary and log files** offer insights into the processing results and data quality
+
+The processing pipeline maintains all these files to ensure:
+- Complete data provenance tracking
+- Ability to debug and validate each processing stage
+- Flexibility to use different combinations of processed data
+- Transparency in the deduplication and enrichment process
+
+This comprehensive output structure supports both the immediate needs of graph analysis and potential future refinements or alternative analysis approaches.
 
 ## 4. Graph Construction and Analysis
 

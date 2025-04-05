@@ -25,10 +25,10 @@ The system performs the following key functions:
 │   └── processed/            # Processed data files
 │       ├── New_And_Original_ResearchOutputs.csv   # Final merged dataset
 │       ├── merged_3_enriched_data.csv             # Merged enriched data
-│       ├── enriched_scraped_data_openalex.csv     # Enriched web data
+│       ├── enriched_scraped_data_openalex.csv     # Enriched API data
 │       ├── enriched_cleaned_data_openalex.csv     # Enriched cleaned data
 │       ├── final_deduped_data_withkeyword.csv     # API data with keywords
-│       ├── fsrdc5_related_papers_api_all.csv      # API data
+│       ├── fsrdc5_related_papers_api_all.csv      # API data(raw)
 │       ├── scraped_data.csv                       # Web scraped data
 │       └── processing.log                         # Processing log
 ├── output/
@@ -157,7 +157,7 @@ This approach is more efficient for repeated runs as it avoids reprocessing exis
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/fsrdc-research-analysis.git
+   git clone https://github.com/Ellison097/Group1_Project.git
    cd fsrdc-research-analysis
    ```
 
