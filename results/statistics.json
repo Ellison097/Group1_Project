@@ -1,0 +1,485 @@
+{
+    "graph_metrics": {
+        "main_graph_density": 0.0819,
+        "institution_graph_density": 0.0039,
+        "year_graph_density": 0.0676
+    },
+    "simulation_statistics": {
+        "papers_submitted": 89,
+        "papers_reviewed": 89,
+        "papers_published": 43,
+        "total_papers": 89,
+        "under_review": 0,
+        "reviewed": 89,
+        "published": 43,
+        "rejected": 46,
+        "pending": 0,
+        "review_time_analysis": {
+            "avg_review_time": 0.0,
+            "min_review_time": 0,
+            "max_review_time": 0
+        },
+        "reviewer_statistics": {
+            "total_reviewers": 20,
+            "avg_assignments_per_reviewer": 0.0,
+            "max_assignments": 0,
+            "expertise_distribution": {},
+            "top_expertise_areas": {
+                "technology": 10,
+                "social": 10,
+                "health": 8,
+                "economics": 6,
+                "education": 6
+            }
+        },
+        "advanced_metrics": {
+            "acceptance_rate": 0.48314606741573035,
+            "average_review_score": 3.0131255158171175,
+            "total_reviews_completed": 267
+        }
+    },
+    "institution_statistics": {
+        "university at albany": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "duluth; minnesota sea grant": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "the university of texas at austin; harvard university; center for economic and policy research; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "duke university; university of maryland": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "federal reserve; boston university; federal reserve bank of new york; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "national bureau of economic research; university of exeter; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "las vegas; michigan united; columbia university; université libre de bruxelles; university of michigan–ann arbor; economic policy institute": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "the state university of new jersey; university of technology sydney": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "state university of new york; university of southampton": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "cuny; national bureau of economic research; world bank": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "berkeley; hearst (united states); university of michigan–ann arbor; national bureau of economic research": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "college park; university of virginia; university of minnesota": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "national bureau of economic research; duke university; university of minnesota": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "los angeles; tufts university; national bureau of economic research; ucla health": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "united states census bureau; princeton university; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "los angeles": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "the state university of new jersey": {
+            "papers_submitted": 2,
+            "papers_reviewed": 2,
+            "papers_published": 0
+        },
+        "university of chicago; national bureau of economic research; massachusetts institute of technology; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "riverside; stanford university; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "davis; lovisenberg diakonale høgskole; emory university; rady children's hospital-san diego; yale university; autistica; la trobe university; king's college london; norwegian institute of public health; university of oslo; saint mary's college of california; goethe university frankfurt; world health organization; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "brigham and women's hospital; georgetown university; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "cuny; city university of new york": {
+            "papers_submitted": 2,
+            "papers_reviewed": 2,
+            "papers_published": 1
+        },
+        "berkeley; national bureau of economic research; george washington university": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "howard hughes medical institute; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "berkeley; mcgill university; national socio-environmental synthesis center; vrije universiteit amsterdam": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "santa cruz; bread for the world institute; brookings institution": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "erasmus university rotterdam; university of maryland": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "shenzhen; clarkson university": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "los angeles; university of toronto; simons foundation": {
+            "papers_submitted": 3,
+            "papers_reviewed": 3,
+            "papers_published": 1
+        },
+        "santa cruz": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "lawrence berkeley national laboratory; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "national bureau of economic research; federal reserve bank of atlanta; university of maryland": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "princeton university; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "los angeles; ross school; national bureau of economic research": {
+            "papers_submitted": 2,
+            "papers_reviewed": 2,
+            "papers_published": 1
+        },
+        "berkeley; arizona state university": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "universidad de los andes; centre for economic policy research; georgetown university; united nations development programme; university of maryland": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "university of wisconsin–madison; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "baltimore; national heart lung and blood institute; university of south carolina; university of california": {
+            "papers_submitted": 2,
+            "papers_reviewed": 2,
+            "papers_published": 0
+        },
+        "iowa state university; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "san diego; world trade organization; uc san diego health system": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "ross school; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "cornell university; national bureau of economic research; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "santa barbara; national renewable energy laboratory; environmental defense fund; united states department of state; national oceanic and atmospheric administration; stanford university; university of calgary; strategic analysis (united states); massachusetts institute of technology; harvard university; university of colorado boulder; university of michigan–ann arbor": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "national bureau of economic research; university of california": {
+            "papers_submitted": 2,
+            "papers_reviewed": 2,
+            "papers_published": 1
+        },
+        "london school of economics and political science; new york university; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "american university of beirut; rumah sakit umum pusat nasional dr. cipto mangunkusumo; heartfile; eat; international food policy research institute; harvard university; university of oxford; wageningen university & research; university of california": {
+            "papers_submitted": 2,
+            "papers_reviewed": 2,
+            "papers_published": 1
+        },
+        "university of indonesia; indonesian institute of sciences; travaux et recherches archéologiques sur les cultures": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "trade and industry": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "san diego; stanford university": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "san diego; national bureau of economic research; united states social security administration; massachusetts institute of technology": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "berkeley; employment agency": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "berkeley; inter-american development bank": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "united states social security administration; stanford university; national bureau of economic research; federal reserve bank of minneapolis; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "college park; university of southern california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "davis; university of toronto; united states census bureau": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "college park; united states census bureau": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "czech academy of sciences": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "london school of economics and political science; university of california": {
+            "papers_submitted": 2,
+            "papers_reviewed": 2,
+            "papers_published": 0
+        },
+        "world bank; the graduate center": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "los angeles; northwestern university; university of toronto; brown university": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "united states census bureau; university of michigan–ann arbor; university of chicago; ross school; university of maryland": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "davis; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "berkeley; spring techno (germany); national bureau of economic research; world bank": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "university of michigan–ann arbor; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "chile; university of chile; national bureau of economic research": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "san francisco; san francisco va medical center; california institute of technology": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "baltimore county; george washington university; wayne state university; united states census bureau": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "irvine; national bureau of economic research; yale university; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "ross school; boston college; university of hawaiʻi at mānoa; university of michigan–ann arbor; california state university": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "national university of ireland": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "laser scan engineering (united kingdom); berkeley college; centre for economic policy research; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "university of nevada": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "holland bloorview kids rehabilitation hospital; mathematica policy research; university of kansas; london school of economics and political science; university of utah; university of cape town; sangath; guy's and st thomas' nhs foundation trust; university hospital frankfurt; university of california": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "university of minnesota": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "los angeles; jpmorgan chase & co (united states)": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "technology and research; north carolina state university; brown university; university of calgary; stanford university; institute of high performance computing; the university of texas at austin": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "cuny; georgetown university; center for economic and policy research": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 0
+        },
+        "irvine; university of cambridge; university of oxford; karolinska institutet; guy's and st thomas' nhs foundation trust; nihr maudsley dementia biomedical research unit; black dog institute; university of glasgow; emory university; academy of medical sciences; cambridgeshire and peterborough nhs foundation trust; king's college london; swansea university; mcpin foundation; uppsala university; uk dementia research institute; maudsley hospital; university of bristol": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "university of peradeniya; auckland university of technology; king's college hospital; cedars-sinai medical center; kwame nkrumah university of science and technology; university college london; st george's": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        },
+        "michigan state university; cornell university; health policy alternatives": {
+            "papers_submitted": 1,
+            "papers_reviewed": 1,
+            "papers_published": 1
+        }
+    },
+    "temporal_evolution": {
+        "2004": 45,
+        "2005": 47,
+        "2001": 17,
+        "2006": 44,
+        "2002": 29,
+        "2003": 48,
+        "1998": 5,
+        "1999": 10,
+        "2000": 10,
+        "2007": 68,
+        "2008": 64,
+        "2011": 101,
+        "2010": 88,
+        "2012": 127,
+        "2013": 158,
+        "2009": 68,
+        "2014": 150,
+        "2015": 144,
+        "2024": 128,
+        "2017": 204,
+        "2016": 164,
+        "2021": 186,
+        "2019": 211,
+        "2018": 261,
+        "2023": 308,
+        "2020": 194,
+        "2022": 248,
+        "2026": 3,
+        "1983": 1,
+        "2025": 4,
+        "1992": 1,
+        "1996": 2,
+        "1987": 1,
+        "1995": 2,
+        "1997": 2,
+        "1985": 1,
+        "1993": 1
+    },
+    "community_detection": {
+        "num_communities": 118
+    }
+}

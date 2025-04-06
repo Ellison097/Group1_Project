@@ -839,6 +839,7 @@ def fill_authors_from_biblio():
 
         # Save the updated dataframe
         output_path = os.path.join("data/processed", "New_And_Original_ResearchOutputs.csv")
+        merged_df = merged_df.iloc[:, :-2]
         merged_df.to_csv(output_path, index=False)
         logging.info(f"Saved updated data to {output_path}")
 

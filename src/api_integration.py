@@ -438,7 +438,7 @@ def process_csv_and_find_citations(
 # Example usage
 if __name__ == "__main__":
     process_csv_and_find_citations(
-        input_file="cleaned_biblio.csv",
+        input_file="data/raw/cleaned_biblio.csv",
         output_file="data/processed/fsrdc5_related_papers_api_all.csv",  # Updated output filename
         title_column="OutputTitle",
         year_column="year",

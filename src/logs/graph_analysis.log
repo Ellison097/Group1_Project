@@ -1,0 +1,46 @@
+2025-04-05 21:43:49,797 - ERROR - Error occurred during execution: [Errno 2] No such file or directory: 'data/processed/New_And_Original_ResearchOutputs.csv'
+Traceback (most recent call last):
+  File "/Users/guolc/Desktop/UPenn/course/Group1_Project/src/graph_analysis.py", line 1136, in main
+    graph_builder = ResearchGraphBuilder('data/processed/New_And_Original_ResearchOutputs.csv')
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/guolc/Desktop/UPenn/course/Group1_Project/src/graph_analysis.py", line 58, in __init__
+    self.data = pd.read_csv(data_path, encoding='utf-8')
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+                   ^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/site-packages/pandas/io/common.py", line 882, in get_handle
+    handle = open(handle, ioargs.mode)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'data/processed/New_And_Original_ResearchOutputs.csv'
+2025-04-05 21:44:13,530 - INFO - Data preprocessing completed, processed 3369 records
+2025-04-05 21:49:13,170 - INFO - Main graph construction completed, containing 3369 nodes and 464675 edges
+2025-04-05 21:49:13,486 - INFO - Institution graph construction completed, containing 430 nodes and 361 edges
+2025-04-05 21:49:18,663 - INFO - Year graph construction completed, containing 37 nodes and 45 edges
+2025-04-05 21:49:20,377 - INFO - Author collaboration graph construction completed, containing 7 nodes and 9 edges
+2025-04-05 21:49:21,722 - INFO - Keyword graph construction completed, containing 2029 nodes and 53558 edges
+2025-04-05 21:49:21,730 - INFO - Louvain method detected 119 communities
+2025-04-05 21:49:21,961 - INFO - Girvan-Newman method detected 113 communities
+2025-04-05 21:49:21,965 - INFO - Label Propagation method detected 140 communities
+2025-04-05 21:49:21,966 - INFO - Year graph Louvain method detected 19 communities
+2025-04-05 21:49:23,445 - INFO - Analysis results have been saved to output/analysis_results.pkl
+2025-04-05 21:50:32,126 - INFO - Data preprocessing completed, processed 3369 records
+2025-04-05 21:55:33,011 - INFO - Main graph construction completed, containing 3369 nodes and 464675 edges
+2025-04-05 21:55:33,329 - INFO - Institution graph construction completed, containing 430 nodes and 361 edges
+2025-04-05 21:55:38,472 - INFO - Year graph construction completed, containing 37 nodes and 45 edges
+2025-04-05 21:55:40,202 - INFO - Author collaboration graph construction completed, containing 7 nodes and 9 edges
+2025-04-05 21:55:41,511 - INFO - Keyword graph construction completed, containing 2029 nodes and 53558 edges
+2025-04-05 21:55:41,520 - INFO - Louvain method detected 118 communities
+2025-04-05 21:55:41,767 - INFO - Girvan-Newman method detected 113 communities
+2025-04-05 21:55:41,771 - INFO - Label Propagation method detected 140 communities
+2025-04-05 21:55:41,772 - INFO - Year graph Louvain method detected 19 communities
+2025-04-05 21:55:43,341 - INFO - Analysis results have been saved to output/analysis_results.pkl

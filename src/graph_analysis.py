@@ -1133,7 +1133,7 @@ def main():
         
         # Build graph
         print("Building research graph...")
-        graph_builder = ResearchGraphBuilder('data/processed/New_And_Original_ResearchOutputs.csv')
+        graph_builder = ResearchGraphBuilder('../New_And_Original_ResearchOutputs.csv')
         
         print("Building main graph...")
         graph_builder.build_main_graph()
@@ -1195,6 +1195,147 @@ def main():
             
         # Save analysis results
         graph_builder.save_to_file()
+        
+        # Save statistics to JSON
+        os.makedirs('../results', exist_ok=True)
+        
+        # Prepare statistics dictionary
+        statistics = {
+            "graph_metrics": {
+                "main_graph_density": float(f"{nx.density(graph_builder.G):.4f}"),
+                "institution_graph_density": float(f"{nx.density(graph_builder.institution_graph):.4f}"),
+                "year_graph_density": float(f"{nx.density(graph_builder.year_graph):.4f}")
+            },
+            "simulation_statistics": {
+                "papers_submitted": len(des.stats['submissions']),
+                "papers_reviewed": len(des.stats['reviews']),
+                "papers_published": len(des.stats['publications'])
+            },
+            "institution_statistics": {},
+            "temporal_evolution": {str(year): count for year, count in year_activity.items()}
+        }
+        
+        # Add institution statistics
+        for institution, stats in des.institution_stats.items():
+            statistics["institution_statistics"][institution] = {
+                "papers_submitted": len(stats['submissions']),
+                "papers_reviewed": len(stats['reviews']),
+                "papers_published": len(stats['publications'])
+            }
+        
+        # Add community detection results
+        if metrics['communities'].get('institution_louvain'):
+            statistics["community_detection"] = {
+                "num_communities": len(set(metrics['communities']['institution_louvain'].values()))
+            }
+        
+        # Add detailed review statistics from DES simulation
+        review_stats = des.get_review_statistics()
+        statistics["simulation_statistics"].update({
+            "total_papers": review_stats.get('total_papers', 0),
+            "under_review": review_stats.get('under_review', 0),
+            "reviewed": review_stats.get('reviewed', 0),
+            "published": review_stats.get('published', 0),
+            "rejected": review_stats.get('rejected', 0),
+            "pending": review_stats.get('pending', 0)
+        })
+        
+        # Add review time statistics if available
+        review_times = []
+        publication_times = []
+        total_process_times = []
+        
+        for paper_id, paper_info in des.papers.items():
+            if paper_info.get('review_time') is not None and paper_info.get('submission_time') is not None:
+                review_duration = paper_info['review_time'] - paper_info['submission_time']
+                review_times.append(review_duration)
+                
+            if paper_info.get('publication_time') is not None and paper_info.get('review_time') is not None:
+                publication_duration = paper_info['publication_time'] - paper_info['review_time']
+                publication_times.append(publication_duration)
+                
+            if paper_info.get('publication_time') is not None and paper_info.get('submission_time') is not None:
+                total_duration = paper_info['publication_time'] - paper_info['submission_time']
+                total_process_times.append(total_duration)
+        
+        if review_times:
+            statistics["simulation_statistics"]["review_time_analysis"] = {
+                "avg_review_time": sum(review_times) / len(review_times),
+                "min_review_time": min(review_times),
+                "max_review_time": max(review_times)
+            }
+            
+        if publication_times:
+            statistics["simulation_statistics"]["publication_time_analysis"] = {
+                "avg_publication_time": sum(publication_times) / len(publication_times),
+                "min_publication_time": min(publication_times),
+                "max_publication_time": max(publication_times)
+            }
+            
+        if total_process_times:
+            statistics["simulation_statistics"]["total_process_time_analysis"] = {
+                "avg_total_process_time": sum(total_process_times) / len(total_process_times),
+                "min_total_process_time": min(total_process_times),
+                "max_total_process_time": max(total_process_times)
+            }
+        
+        # Add reviewer statistics
+        if des.reviewer_pool:
+            reviewer_stats = {
+                "total_reviewers": len(des.reviewer_pool),
+                "avg_assignments_per_reviewer": sum(r['current_assignments'] for r in des.reviewer_pool) / len(des.reviewer_pool),
+                "max_assignments": max(r['current_assignments'] for r in des.reviewer_pool),
+                "expertise_distribution": {}
+            }
+            
+            # Count expertise areas
+            expertise_counts = defaultdict(int)
+            for reviewer in des.reviewer_pool:
+                for area in reviewer['expertise']:
+                    expertise_counts[area] += 1
+            
+            # Get top 5 expertise areas
+            top_expertise = sorted(expertise_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            reviewer_stats["top_expertise_areas"] = {area: count for area, count in top_expertise}
+            
+            statistics["simulation_statistics"]["reviewer_statistics"] = reviewer_stats
+        
+        # Add advanced metrics based on DES simulation
+        if hasattr(des, 'paper_status') and des.paper_status:
+            # Calculate acceptance rate
+            published_count = sum(1 for status in des.paper_status.values() if status.get('status') == 'published')
+            reviewed_count = sum(1 for status in des.paper_status.values() 
+                              if status.get('status') in ['published', 'rejected'])
+            
+            if reviewed_count > 0:
+                acceptance_rate = published_count / reviewed_count
+            else:
+                acceptance_rate = 0
+                
+            # Calculate average review score
+            all_scores = []
+            for paper_status in des.paper_status.values():
+                if 'review_results' in paper_status:
+                    for review in paper_status['review_results']:
+                        if 'score' in review:
+                            all_scores.append(review['score'])
+            
+            if all_scores:
+                avg_score = sum(all_scores) / len(all_scores)
+            else:
+                avg_score = 0
+                
+            statistics["simulation_statistics"]["advanced_metrics"] = {
+                "acceptance_rate": acceptance_rate,
+                "average_review_score": avg_score,
+                "total_reviews_completed": len(all_scores)
+            }
+        
+        # Save to JSON file
+        with open('../results/statistics.json', 'w', encoding='utf-8') as f:
+            json.dump(statistics, f, indent=4, ensure_ascii=False)
+        
+        print(f"\nStatistics saved to ../results/statistics.json")
         
     except Exception as e:
         print(f"Error occurred during execution: {str(e)}")

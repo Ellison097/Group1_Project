@@ -959,242 +959,91 @@ Our graph analysis revealed several important insights:
 
 Our graph analysis provides a comprehensive view of the FSRDC research landscape, highlighting key collaborations, influential institutions, and temporal trends. The simulation offers additional insights into the dynamic nature of the research publication process.
 
-## 5. Data Analysis and Visualization
+## 5. EDA (Data Analysis and Visualization)
 
-In this section, we present our comprehensive data analysis and visualization efforts, leveraging Pandas for data manipulation and Plotly for interactive visualizations. Our approach combines network analysis with statistical techniques to uncover insights into the FSRDC research landscape.
+This section details the Exploratory Data Analysis (EDA) conducted on the final integrated dataset (`New_And_Original_ResearchOutputs.csv`), fulfilling the requirements outlined in Step 5. We leveraged Pandas for essential data manipulation tasks, including cleaning (handling missing values, type conversions), aggregation, and the exploration of summary statistics. Interactive visualizations were generated using Plotly to investigate data distributions, temporal trends, and collaboration patterns. Furthermore, optional statistical analyses were performed using libraries such as Statsmodels and Scikit-learn to delve deeper into relationships between variables (regression, ANOVA) and to explore dimensionality reduction techniques (PCA).
 
-### 5.1 Network Visualization
+### 5.1 Overall Dataset Composition
 
-We created interactive visualizations of the research networks using Plotly, enabling intuitive exploration of complex relationships.
+The final dataset encompasses 3,369 research records, aggregated from three distinct origins.
 
-#### 5.1.1 Institution Collaboration Network
+-   **Data Source Distribution:** The contribution from each source is as follows: ResearchOutputs provided 1,735 records (51.5%), the API integration yielded 982 records (29.1%), and web scraping contributed 652 records (19.4%). This highlights the foundational role of the original ResearchOutputs list, significantly augmented by the API and web scraping efforts. **Refer to EDA.ipynb Section 1.1 Summary** for the bar chart visualizing this source breakdown.
+-   **Temporal Distribution:** Analysis of publication years, facilitated by Pandas for data cleaning and type conversion, reveals a distinct temporal pattern. Research output remained minimal before 2000, saw a steady increase between 2000-2010, and experienced sharp acceleration from 2010 onwards, peaking around 2020. This indicates a substantial growth in research activity within this domain over the past two decades. **Refer to EDA.ipynb Section 1.1 Summary** for the histogram illustrating the overall year distribution.
 
-The institution collaboration network visualization reveals the complex relationships between research institutions:
+### 5.2 Author Collaboration Patterns
 
-![Institution Collaboration Network](output/visualizations/institution_collaboration.html)
+Collaboration dynamics were explored by analyzing authorship information.
 
-```python
-def plot_institution_collaboration(self) -> go.Figure:
-    """Draw the institution collaboration network"""
-    if not self.analyzer.institution_graph:
-        return self._create_empty_plot("No institution collaboration data available")
-        
-    # Get node positions
-    pos = nx.spring_layout(self.analyzer.institution_graph)
-    
-    # Prepare node data
-    node_x = []
-    node_y = []
-    node_text = []
-    node_size = []
-    node_color = []
-    
-    for node in self.analyzer.institution_graph.nodes():
-        x, y = pos[node]
-        node_x.append(x)
-        node_y.append(y)
-        node_text.append(str(node))
-        # Use node degree as node size
-        degree = self.analyzer.institution_graph.degree(node)
-        node_size.append(degree * 10)
-        # Set color based on node degree
-        if degree > 5:
-            node_color.append('darkred')  # High collaboration institutions as dark red
-        elif degree > 2:
-            node_color.append('red')  # Medium collaboration institutions as red
-        else:
-            node_color.append('lightsalmon')  # Low collaboration institutions as light salmon
-```
+-   **Author Count Distribution:** A `num_authors` feature was derived using Pandas by parsing the 'authors' field. The resulting distribution shows a strong predominance of single-author (approx. 800 publications) and small-team publications (1-5 authors). The frequency decreases rapidly as team size grows, although the dataset contains rare instances of collaborations exceeding 100 authors. This suggests that while individual and small-team work is most common, the field accommodates diverse collaboration scales. **Refer to EDA.ipynb Section 1.1 Summary** for the histogram visualizing the distribution of authors per article.
+-   **Leading Contributors:** Aggregation of author contributions across the dataset identified the most prolific individuals. The top contributors include Bernard (34 publications), Giroud (27), R. (25), Andrew B. (24), Li (24), Xavier (23), Peter K. Schott (23), M. (20), John Haltwanger (20), and J. Bradford Jensen (19). These individuals represent key figures in the research landscape captured by our dataset. **Refer to EDA.ipynb Section 1.1 Summary** for the bar chart detailing the top 10 authors by publication count.
 
-The visualization highlights key patterns in institutional collaboration. Institutions with higher centrality measures (shown in darker red with larger nodes) form the core of the network, serving as central hubs that connect numerous peripheral institutions. The Census Bureau, National Bureau of Economic Research, and major research universities emerge as pivotal nodes with extensive collaboration links.
+### 5.3 Keyword Analysis (Overall)
 
-Analysis of this network reveals:
-- A core-periphery structure where a small number of institutions dominate collaboration activities
-- Geographic clustering of collaborations, with institutions in similar regions showing stronger connections
-- Cross-sector collaboration bridges between academic, governmental, and private research institutions
+Thematic analysis was performed by examining the aggregated 'Keywords' field using Pandas and `collections.Counter`.
 
-These patterns suggest that FSRDC research relies heavily on established partnerships between key institutions, with specialized expertise concentrated in certain network hubs.
+-   **Top Keywords:** "Economics" emerges as the most frequent keyword (1,132 mentions), significantly outpacing other prominent terms like "Business" (721), "Computer Science" (662), "Mathematics" (447), and "Political Science" (411). Related fields such as "Law," "Finance," and "Sociology" also appear frequently (around 300-350 times). This distribution underscores the interdisciplinary nature of the research, with a strong core in economics complemented by various related disciplines. **Refer to EDA.ipynb Section 1.5** for the bar chart showing the top 20 keywords.
 
-#### 5.1.2 Author and Keyword Networks
+### 5.4 Institutional Analysis (Overall)
 
-Our analysis included visualizations of author collaboration and keyword co-occurrence networks:
+The landscape of contributing organizations was analyzed by processing the `institution_display_names` field.
 
-![Author Collaboration Network](output/visualizations/author_graph.html)
+-   **Top Institutions:** The National Bureau of Economic Research leads significantly with 878 publications, followed by the University of Chicago (185 publications). The top 20 institutions are predominantly U.S.-based research universities and economic research organizations, indicating a concentration of output among major centers but also diversity across multiple institutions. **Refer to EDA.ipynb Section 1.6** for the bar chart listing the top 20 institutions.
 
-![Keyword Co-occurrence Network](output/visualizations/keyword_graph.html)
+### 5.5 Data Completeness Assessment
 
-The author collaboration network reveals clusters of researchers who frequently work together, with distinct communities forming around research specialties. Similarly, the keyword co-occurrence network illustrates how research topics are interconnected, with certain keywords forming thematic clusters.
+Understanding data completeness is vital for interpreting results. Missing data patterns were assessed using Pandas.
 
-Key findings from these networks include:
-- Author networks show a power-law degree distribution (γ = -2.34), indicating a scale-free network where a small number of highly connected researchers collaborate across multiple groups
-- Keyword clusters reveal distinct research domains within FSRDC research, including demographic analysis, economic studies, and methodological approaches
-- Bridge nodes (both authors and keywords) that connect different research communities play a crucial role in knowledge diffusion
+-   **Missing Value Patterns:** Core fields like 'title', 'authors', and essential metadata generally show high completion rates. However, secondary information fields such as 'acknowledgments', 'detailed affiliations', 'disclosure_review', 'rdc_mentions', and 'dataset_mentions' exhibit more significant gaps, particularly for data not originating from the initial web scraping phase. This suggests good reliability for primary information but highlights areas where supplementary metadata collection could be enhanced. **Refer to EDA.ipynb Section 1.7** for the heatmap visualizing missing data percentages across columns.
 
-#### 5.1.3 Community Structure Analysis
+### 5.6 Statistical Analysis (Optional)
 
-We analyzed the community structure of the institution network using multiple detection algorithms:
+To fulfill optional requirements and gain deeper insights, statistical analyses were conducted.
 
-![Community Distribution](output/visualizations/community_distribution.html)
+#### 5.5.1 Regression and ANOVA on Author Count
 
-![Community Heatmap](output/visualizations/community_heatmap.html)
+We investigated factors potentially influencing research team size using regression and ANOVA (via Statsmodels), after preprocessing data with Pandas (handling NaNs, type conversion, creating 'source_type' and 'keyword_count' features).
 
-The community distribution histogram shows the size distribution of detected research communities, while the heatmap visualizes connections between different communities. Our analysis identified 118 distinct research communities using the Louvain method, with significant variation in community size.
+-   **Aim:** To understand the relationship between publication year, source type, keyword count, and the number of authors, and to test for differences across sources and temporal trends.
+-   **OLS Regression:** A multiple linear regression (`num_authors ~ year + keyword_count + C(source_type)`) yielded a statistically significant model (F=5.477, p<0.001) but with low explanatory power (R²=0.007). The 'year' coefficient was significant (β=0.0417, p<0.001), suggesting a slight increase in average team size over time (approx. one author per 25 years). Source type and keyword count were not significant predictors in this model. Potential multicollinearity (Condition Number: 5.93e+05) and non-normal residuals were noted as limitations.
+-   **ANOVA:** A one-way ANOVA (`num_authors ~ C(source_type)`) revealed statistically significant differences in the mean number of authors across the three data sources (F=3.623, p=0.027), indicating that collaboration patterns vary somewhat depending on the data origin when considered alone.
+-   **Linear Trend Analysis:** Using `scipy.optimize.curve_fit`, a positive linear trend in team size over time was confirmed (slope = 0.039 ± 0.011).
+-   **Findings:** There is evidence for increasing team sizes over time, consistent across sources. Modest but significant differences in collaboration patterns exist between data sources. Research scope (proxied by keyword count) does not appear strongly related to team size.
+-   **Refer to EDA.ipynb Section 1.8** for the detailed statistical outputs, model summaries, limitations, and implementation details.
 
-The community structure analysis reveals:
-- A fragmented landscape with many small, specialized communities alongside a few large, influential ones
-- Strong inter-community connections in related research domains
-- Communities organized primarily by research focus, with secondary clustering by geographic region
+#### 5.5.2 Principal Component Analysis (PCA) on Abstracts and Metadata
 
-These visualizations help understand how knowledge flows between different segments of the FSRDC research ecosystem and identify potential areas for fostering new collaborations.
+PCA (via Scikit-learn) was applied to explore patterns in the data based on textual content and metadata, aiming for dimensionality reduction and visualization. TF-IDF features from abstracts (`TfidfVectorizer`, max_features=300) were combined with `num_authors` and `keyword_count`.
 
-### 5.2 Dataset Analysis
+-   **Aim:** To reduce dimensionality and visually explore patterns across data sources using combined textual and numeric features.
+-   **Methodology:** TF-IDF matrix from abstracts was combined with numeric features, and PCA was applied to reduce to 2 components.
+-   **Findings:** The 2D PCA scatter plot revealed distinct visual clustering by source type. WebScrap articles formed tighter clusters, suggesting content homogeneity. API-sourced articles were more dispersed, implying greater content diversity. ResearchOutputs data showed characteristics overlapping both. Several outliers were identified.
+-   **Implications:** The patterns suggest systematic content differences between sources and validate the use of multiple sources for comprehensive coverage. Outliers may represent novel research.
+-   **Limitations:** PCA is linear; information is lost in dimensionality reduction. TF-IDF doesn't capture semantics. Missing abstract data (over 50%) limits generalizability.
+-   **Refer to EDA.ipynb Section 1.9** for the PCA scatter plot, methodology details, and further discussion.
 
-We performed comprehensive analysis of the FSRDC research dataset using multiple analytical approaches.
+### 5.7 Source-Specific Keyword and Metadata Analysis
 
-#### 5.2.1 Temporal Analysis
+To further characterize the data sources, keyword themes and specific metadata fields were analyzed individually for the WebScrap, ResearchOutputs, and API subsets.
 
-Our temporal analysis examined the evolution of research output over time:
+#### 5.7.1 WebScrap Dataset (652 Records)
 
-![Distribution of Publications by Year](output/visualizations/publication_by_year.html)
+-   **Keywords:** The word cloud reveals prominent topics including Computer Science, Economics, Business, Mathematics, AI, Data Science, and Social Sciences, suggesting a balanced mix of technical, economic, and social science research, possibly reflecting a more exploratory collection.
+-   **Metadata Presence:** Analysis of boolean metadata fields (`acknowledgments`, `data_descriptions`, `disclosure_review`, `rdc_mentions`, `dataset_mentions`) showed `data_descriptions` was frequently marked True (635 times), while others, especially `rdc_mentions` (0 True), were sparsely populated. This indicates richness in general data context but limited specific tracking information within this subset.
+-   **Refer to EDA.ipynb Section 2 (WebScrapping Data)** for the word cloud and metadata bar plot.
 
-![Publication Trend Analysis](output/visualizations/publication_trend.html)
+#### 5.7.2 ResearchOutputs Dataset (1,735 Records)
 
-The temporal analysis shows a significant growth in FSRDC-related research from 1983 to present, with particularly rapid expansion after 2010. The distribution of publications by year reveals key patterns in research productivity:
+-   **Keywords:** The word cloud reflects a broad academic scope centered on Economics, Business, Computer Science, and Political Science, including subfields like Industrial Organization and Microeconomics. This aligns with its origin as a structured list of academic outputs.
+-   **Refer to EDA.ipynb Section 3(ResearchOutputs)** for the word cloud.
 
-- Early stage (1983-1999): Limited research output with less than 10 publications per year
-- Growth stage (2000-2010): Steady increase reaching approximately 100 publications annually
-- Maturity stage (2011-2023): Exponential growth with peak productivity exceeding 300 publications in 2023
-- Recent decline: A slight reduction in 2020-2021, likely attributable to the COVID-19 pandemic
+#### 5.7.3 API Dataset (982 Records)
 
-Our trend analysis indicates an average annual growth rate of 8.7% over the past decade, with linear regression predicting continued growth in the coming years (R² = 0.89). This trend suggests increasing relevance and utilization of FSRDC resources for research purposes.
+-   **Keywords:** Dominant keywords include Economics, Business, Computer Science, Finance, Labour Economics, and Political Science. The emphasis seems slightly more weighted towards economics and applied social sciences compared to other sources, possibly reflecting the API's focus or underlying database taxonomy.
+-   **Refer to EDA.ipynb Section 4 (API)** for the word cloud.
 
-#### 5.2.2 Institution Analysis
+#### 5.7.4 Summary Across Sources
 
-We analyzed the distribution and impact of research institutions:
-
-![Top 20 Institutions by Publication Count](output/visualizations/top_institutions.html)
-
-![Institution Collaborations](output/visualizations/institution_collaborations.html)
-
-The institutional analysis highlights the dominance of key organizations in FSRDC research:
-
-- The Census Bureau, National Bureau of Economic Research, and major research universities account for over 40% of all publications
-- Institutions with dedicated RDC facilities show significantly higher productivity
-- The top 15 institution collaborations reveal strong partnerships between government agencies and academic institutions
-
-These findings illustrate the institutional landscape of FSRDC research, characterized by:
-- Strategic partnerships between data providers (government agencies) and academic users
-- Concentration of expertise in specialized institutions
-- Long-tail distribution with many institutions having limited engagement with FSRDC data
-
-Our analysis suggests that expanding access to more institutions could diversify the research landscape and potentially generate novel insights from FSRDC data.
-
-#### 5.2.3 Keyword Analysis
-
-Our keyword analysis identified prevalent topics and their relationships:
-
-![Top 30 Keywords](output/visualizations/top_keywords.html)
-
-![Keyword Co-occurrences](output/visualizations/keyword_cooccurrences.html)
-
-![Keyword Trends by Year](output/visualizations/keyword_trends.html)
-
-The keyword analysis reveals dominant themes in FSRDC research:
-- Economic analysis, demographic studies, and labor market research emerge as core themes
-- Methodological topics related to data access, confidentiality protection, and statistical disclosure control are prominently featured
-- Recent trends show increasing interest in applying advanced computational methods (machine learning, causal inference) to restricted data
-
-The keyword co-occurrence network demonstrates how research topics interconnect, with certain keyword pairs frequently appearing together in publications. The temporal heatmap of keyword trends illustrates how research focus has evolved over time, with some topics maintaining consistent interest while others show periodic popularity.
-
-This analysis provides valuable insights into the thematic landscape of FSRDC research, helping identify established research areas and emerging topics.
-
-#### 5.2.4 Statistical Analysis
-
-We conducted statistical analyses to understand relationships between various research attributes:
-
-![Citation Count vs. Publication Year](output/visualizations/citation_by_year.html)
-
-![Citation by Author Count](output/visualizations/citation_by_author_count.html)
-
-![Citation by Institution Count](output/visualizations/citation_by_institution_count.html)
-
-Our statistical analysis revealed several significant patterns:
-
-1. **Year-Citation Relationship**: We found a moderate negative correlation (r = -0.42, p < 0.001) between publication year and citation count, indicating that older papers have accumulated more citations. This pattern is expected given the time required for papers to be discovered and cited.
-
-2. **Collaboration-Citation Relationship**: 
-   - Papers with multiple institutions have 28% higher citation counts on average
-   - The relationship between author count and citation count follows a non-linear pattern with optimal impact at 3-5 authors
-   - Papers with international institutional collaboration receive 34% more citations than those with only domestic collaborations
-
-3. **Topic-Citation Relationship**:
-   - Papers addressing methodological topics receive more citations on average than domain-specific studies
-   - Publications that bridge multiple research domains show above-average citation performance
-
-These findings highlight the complex interplay between temporal factors, collaboration patterns, and research focus in determining the scholarly impact of FSRDC research.
-
-#### 5.2.5 Principal Component Analysis
-
-We applied Principal Component Analysis (PCA) to identify latent factors in institutional collaboration:
-
-![PCA Explained Variance](output/visualizations/pca_variance.html)
-
-![PCA Components](output/visualizations/pca_components.html)
-
-Our PCA analysis of the institution co-occurrence matrix revealed distinct patterns in research collaboration:
-
-- The first three principal components explain 64.7% of the variance in institutional collaborations
-- Component 1 (31.2% variance) strongly correlates with geographical proximity, suggesting regional collaboration patterns
-- Component 2 (21.5% variance) aligns with research domain similarity, indicating topic-based collaboration
-- Component 3 (12.0% variance) appears related to funding source commonality, revealing the influence of funding mechanisms on collaboration
-
-This analysis helps decompose the complex multidimensional nature of institutional collaboration into interpretable factors, providing insights into the underlying drivers of research partnerships in the FSRDC ecosystem.
-
-### 5.3 Centrality and Influence Analysis
-
-We examined how network position relates to research impact:
-
-![Centrality Distribution](output/visualizations/centrality_distribution.html)
-
-Our analysis of centrality measures revealed significant patterns in the influence structure of the FSRDC research network:
-
-1. **Centrality-Impact Relationship**:
-   - Eigenvector centrality shows the strongest correlation with citation count (r = 0.58)
-   - Betweenness centrality correlates with research novelty and interdisciplinary impact
-   - High-degree institutions tend to produce more publications but show more variable citation performance
-
-2. **Temporal Evolution of Centrality**:
-   - Early network centrality (pre-2000) was dominated by government agencies
-   - Gradual shift toward academic institutions having higher centrality in recent years
-   - Emergence of private research organizations as significant nodes since 2015
-
-3. **Geographic Patterns**:
-   - Institutions in metropolitan areas show higher average centrality
-   - International institutions typically occupy peripheral positions but maintain strong links to central US institutions
-
-The centrality distribution follows a power-law pattern characteristic of scale-free networks, indicating a hierarchical influence structure where a small number of institutions exert disproportionate influence on the overall research landscape.
-
-### 5.4 Integrated Network Insights
-
-By combining network analysis and statistical techniques, we gained several integrated insights:
-
-1. **Research Evolution and Impact**
-   - Research communities identified through network analysis show distinct citation patterns and topic evolution
-   - Temporal communities correlate with shifts in research focus detected through keyword analysis
-   - The most influential papers often emerge at the intersection of multiple communities
-
-2. **Institution Influence Dynamics**
-   - Institutions with high centrality produce papers with higher average citation counts
-   - Cross-community collaborations generate more innovative and impactful research
-   - The relationship between network position and research impact follows a non-linear pattern
-
-3. **Topic Diffusion Patterns**
-   - New research topics typically emerge from institutions with high eigenvector centrality
-   - Topics diffuse through the network following predictable patterns, with rapid adoption by closely connected institutions
-   - The full network typically requires 4-5 years for complete diffusion of new research approaches
-
-Our analysis provides a comprehensive view of the FSRDC research ecosystem, revealing the complex interplay between institutional relationships, research topics, and scholarly impact. These insights can inform strategic decisions for researchers, institutions, and policymakers seeking to maximize the value of FSRDC resources for advancing scientific knowledge.
-
+While core academic themes overlap across all sources, subtle differences in focus emerge: WebScrap appears more mixed, ResearchOutputs more formally structured, and API more concentrated on economic/policy themes. This analysis validates the complementary nature of the sources in capturing diverse facets of FSRDC-related research.
 
 
 
