@@ -1,5 +1,9 @@
 import logging
 import os
+import json
+import pickle
+import simpy
+import networkx as nx
 
 from data_processing import process_data
 from graph_analysis import ResearchGraphBuilder
@@ -85,9 +89,22 @@ def main():
         if os.path.exists(pkl_path):
             print("Found saved analysis results, loading directly...")
             graph_builder = ResearchGraphBuilder.load_from_file(pkl_path)
+            graph_builder.analysis_results = {}
             print("✓ Successfully loaded saved analysis results")
 
-            print("Recalculating network metrics...")
+            print("Computing network metrics (degree, betweenness, clustering)...")
+            graph_builder.compute_all_graph_metrics()
+            
+            print("Running community detection to identify clusters...")
+            graph_builder.run_all_community_detection()
+            
+            print("Computing temporal analysis metrics...")
+            graph_builder.compute_temporal_analysis()
+            
+            print("Saving analysis results to JSON...")
+            graph_builder.save_analysis_to_json("results/graph_metrics.json")
+            
+            print("Recalculating advanced network metrics...")
             graph_builder.compute_advanced_metrics()
             print("✓ Network metrics calculation completed")
         else:

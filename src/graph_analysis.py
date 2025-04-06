@@ -5,7 +5,7 @@ from datetime import datetime
 import random
 from typing import Dict, List, Tuple, Set
 import logging
-from collections import defaultdict
+from collections import defaultdict, Counter
 import simpy
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -63,6 +63,8 @@ class ResearchGraphBuilder:
         self.institution_graph = nx.Graph()  # Institution graph
         self.year_graph = nx.Graph()  # Year graph
         
+        self.analysis_results = {}  # Dictionary to store all computed metrics and results
+        
         # Preprocess data
         self._preprocess_data()
         
@@ -110,6 +112,12 @@ class ResearchGraphBuilder:
         
         # Add institution shared edges
         self._add_institution_edges()
+        
+        self.analysis_results['main_graph_summary'] = {
+            'num_nodes': self.G.number_of_nodes(),
+            'num_edges': self.G.number_of_edges(),
+            'density': nx.density(self.G) if self.G else 0
+        }
         
         logging.info(f"Main graph construction completed, containing {self.G.number_of_nodes()} nodes and {self.G.number_of_edges()} edges")
 
@@ -251,47 +259,60 @@ class ResearchGraphBuilder:
         logging.info(f"Institution graph construction completed, containing {self.institution_graph.number_of_nodes()} nodes and {self.institution_graph.number_of_edges()} edges")
 
     def build_year_graph(self) -> None:
-        """Build year graph"""
+        """Build year graph based on shared authors between papers in adjacent years."""
+        logging.info("Building year graph...")
         self.year_graph = nx.Graph()
-        
-        # Get all years and sort them
-        years = sorted([int(year) for year in self.data['year'].unique() if pd.notna(year)])
-        
-        # Add nodes
+
+        # Filter out rows with invalid years
+        valid_year_data = self.data.dropna(subset=['year'])
+        valid_year_data['year'] = valid_year_data['year'].astype(int) # Ensure integer years
+
+        # Get all unique years and sort them
+        years = sorted(valid_year_data['year'].unique())
+
+        if not years:
+            logging.warning("No valid years found to build year graph.")
+            return
+
+        # Add year nodes and store associated paper IDs
+        year_papers = defaultdict(list)
         for year in years:
-            self.year_graph.add_node(year, papers=[])
-        
-        # Add papers for each year
-        for _, row in self.data.iterrows():
-            year = row['year']
-            if pd.notna(year):
-                year = int(year)
-                if year in self.year_graph:
-                    self.year_graph.nodes[year]['papers'].append(str(row['paper_id']))
-        
-        # Add edges - using sliding window to connect adjacent years
-        window_size = 3
-        for i in range(len(years) - 1):
+            papers_in_year = valid_year_data[valid_year_data['year'] == year]['paper_id'].tolist()
+            if papers_in_year:
+                 self.year_graph.add_node(year, papers=papers_in_year)
+                 year_papers[year] = set(papers_in_year) # Use set for faster lookups
+
+        # Add edges based on shared authors between papers in adjacent years (sliding window)
+        window_size = 3 # Connect years up to 3 apart
+        edge_count = 0
+        authors_by_paper = pd.Series(self.data['authors'].values, index=self.data['paper_id']).to_dict()
+
+        for i in range(len(years)):
             for j in range(i + 1, min(i + window_size + 1, len(years))):
                 year1, year2 = years[i], years[j]
-                papers1 = set(self.year_graph.nodes[year1]['papers'])
-                papers2 = set(self.year_graph.nodes[year2]['papers'])
-                
-                # Calculate paper associations between two years
-                # Use citation relationships or author co-occurrences to establish connections
-                common_authors = set()
-                for paper_id1 in papers1:
-                    paper1_authors = set(self.data.loc[int(paper_id1), 'authors'])
-                    for paper_id2 in papers2:
-                        paper2_authors = set(self.data.loc[int(paper_id2), 'authors'])
-                        common_authors.update(paper1_authors & paper2_authors)
-                
-                if len(common_authors) > 0:
-                    self.year_graph.add_edge(year1, year2, 
-                                          weight=len(common_authors),
-                                          type='author_collaboration')
-        
-        logging.info(f"Year graph construction completed, containing {self.year_graph.number_of_nodes()} nodes and {self.year_graph.number_of_edges()} edges")
+
+                # Ensure both years are actually nodes in the graph
+                if year1 not in year_papers or year2 not in year_papers:
+                    continue
+
+                papers1 = year_papers[year1]
+                papers2 = year_papers[year2]
+
+                # Find common authors efficiently
+                authors1 = set(author for paper_id in papers1 for author in authors_by_paper.get(paper_id, []))
+                authors2 = set(author for paper_id in papers2 for author in authors_by_paper.get(paper_id, []))
+                common_authors_count = len(authors1.intersection(authors2))
+
+                if common_authors_count > 0:
+                    self.year_graph.add_edge(year1, year2, weight=common_authors_count, type='author_continuity')
+                    edge_count += 1
+
+        self.analysis_results['year_graph_summary'] = {
+             'num_nodes': self.year_graph.number_of_nodes(),
+             'num_edges': self.year_graph.number_of_edges(),
+             'density': nx.density(self.year_graph) if self.year_graph else 0
+        }
+        logging.info(f"Year graph construction completed: {self.year_graph.number_of_nodes()} nodes, {self.year_graph.number_of_edges()} edges.")
 
     def compute_year_metrics(self) -> Dict:
         """Calculate year graph metrics"""
@@ -879,6 +900,295 @@ class ResearchGraphBuilder:
         self.keyword_graph.remove_nodes_from(isolated_nodes)
         
         logging.info(f"Keyword graph construction completed, containing {self.keyword_graph.number_of_nodes()} nodes and {self.keyword_graph.number_of_edges()} edges")
+
+    def compute_graph_metrics(self, graph: nx.Graph, graph_name: str, top_n: int = 10) -> Dict:
+        """Computes standard network metrics for a given graph and identifies top nodes."""
+        logging.info(f"Computing metrics for {graph_name}...")
+        metrics = {}
+        num_nodes = graph.number_of_nodes()
+        num_edges = graph.number_of_edges()
+
+        if num_nodes == 0:
+            logging.warning(f"{graph_name} is empty. Skipping metric calculation.")
+            return {
+                "num_nodes": 0, "num_edges": 0, "density": 0,
+                "degree_centrality": {"top_n": [], "all": {}},
+                "betweenness_centrality": {"top_n": [], "all": {}},
+                "clustering_coefficient": {"average": 0, "all": {}}
+            }
+
+        metrics['num_nodes'] = num_nodes
+        metrics['num_edges'] = num_edges
+        metrics['density'] = nx.density(graph)
+
+        # Degree Centrality
+        try:
+            degree_centrality = nx.degree_centrality(graph)
+            # Sort nodes by degree centrality and get top N
+            top_degree_nodes = sorted(degree_centrality.items(), key=lambda item: item[1], reverse=True)[:top_n]
+            metrics['degree_centrality'] = {"top_n": top_degree_nodes, "all": degree_centrality}
+        except Exception as e:
+            logging.warning(f"Could not compute degree centrality for {graph_name}: {e}")
+            metrics['degree_centrality'] = {"top_n": [], "all": {}}
+
+        # Betweenness Centrality (can be slow for large graphs)
+        try:
+            # Consider using k for approximation if graph is too large: k=min(1000, num_nodes//10)
+            betweenness_centrality = nx.betweenness_centrality(graph, normalized=True, endpoints=False)
+            top_betweenness_nodes = sorted(betweenness_centrality.items(), key=lambda item: item[1], reverse=True)[:top_n]
+            metrics['betweenness_centrality'] = {"top_n": top_betweenness_nodes, "all": betweenness_centrality}
+        except Exception as e:
+            logging.warning(f"Could not compute betweenness centrality for {graph_name}: {e}")
+            metrics['betweenness_centrality'] = {"top_n": [], "all": {}}
+
+        # Clustering Coefficient
+        try:
+            clustering_coefficient = nx.clustering(graph)
+            average_clustering = nx.average_clustering(graph) # Avg clustering coeff
+            metrics['clustering_coefficient'] = {"average": average_clustering, "all": clustering_coefficient}
+        except Exception as e:
+            logging.warning(f"Could not compute clustering coefficient for {graph_name}: {e}")
+            metrics['clustering_coefficient'] = {"average": 0, "all": {}}
+
+        logging.info(f"Finished computing metrics for {graph_name}.")
+        return metrics
+
+    def compute_all_graph_metrics(self):
+         """Compute metrics for all constructed graphs."""
+         if self.institution_graph:
+             self.analysis_results['institution_graph_metrics'] = self.compute_graph_metrics(self.institution_graph, "Institution Graph")
+         if self.author_graph:
+             self.analysis_results['author_graph_metrics'] = self.compute_graph_metrics(self.author_graph, "Author Graph")
+         if self.keyword_graph:
+             self.analysis_results['keyword_graph_metrics'] = self.compute_graph_metrics(self.keyword_graph, "Keyword Graph")
+         # Add other graphs if needed (e.g., main graph G, year graph)
+         # Metrics for year_graph might be less standard - density already captured
+
+    def run_community_detection(self, graph: nx.Graph, graph_name: str) -> Dict:
+        """Runs Louvain community detection and returns community features."""
+        logging.info(f"Running Louvain community detection for {graph_name}...")
+        communities_result = {}
+        num_nodes = graph.number_of_nodes()
+        num_edges = graph.number_of_edges()
+
+        if num_nodes == 0 or num_edges == 0:
+             logging.warning(f"{graph_name} has no nodes or edges, skipping community detection.")
+             return {"num_communities": 0, "top_communities_by_size": [], "modularity": None, "features": {}}
+
+        try:
+            # Ensure the graph is treated as undirected for Louvain if necessary
+            # Louvain implementation might handle this internally, but explicit check is safe.
+            partition = community.best_partition(graph)
+            modularity = community.modularity(partition, graph)
+
+            community_groups = defaultdict(list)
+            for node, community_id in partition.items():
+                community_groups[community_id].append(node)
+
+            num_communities = len(community_groups)
+            logging.info(f"Louvain detected {num_communities} communities in {graph_name} with modularity {modularity:.4f}")
+
+            # Calculate features for each community
+            community_features = {}
+            community_sizes = []
+            for community_id, members in community_groups.items():
+                 if not members: continue
+                 subgraph = graph.subgraph(members)
+                 size = len(members)
+                 density = nx.density(subgraph) if subgraph.number_of_edges() > 0 else 0
+                 # Get top 5 central nodes within the community (using degree as proxy)
+                 subgraph_degrees = dict(subgraph.degree())
+                 top_nodes_in_community = sorted(members, key=lambda node: subgraph_degrees.get(node, 0), reverse=True)[:5]
+
+                 community_features[str(community_id)] = { # Ensure key is string for JSON
+                     'size': size,
+                     'density': density,
+                     'top_central_nodes': top_nodes_in_community,
+                     'internal_edges': subgraph.number_of_edges()
+                     # Could add avg clustering coeff within community
+                 }
+                 community_sizes.append({'id': str(community_id), 'size': size})
+
+            # Get top communities by size
+            top_communities = sorted(community_sizes, key=lambda x: x['size'], reverse=True)[:10]
+
+            communities_result = {
+                "algorithm": "Louvain",
+                "num_communities": num_communities,
+                "modularity": modularity,
+                "top_communities_by_size": top_communities,
+                "features": community_features # Contains details for all communities
+            }
+
+        except Exception as e:
+            logging.warning(f"Louvain community detection failed for {graph_name}: {e}")
+            communities_result = {"num_communities": 0, "top_communities_by_size": [], "modularity": None, "features": {}}
+
+        return communities_result
+
+    def run_all_community_detection(self):
+        """Run community detection for relevant graphs."""
+        if self.institution_graph:
+            self.analysis_results['institution_communities'] = self.run_community_detection(self.institution_graph, "Institution Graph")
+        if self.author_graph:
+             self.analysis_results['author_communities'] = self.run_community_detection(self.author_graph, "Author Graph")
+        if self.keyword_graph:
+             self.analysis_results['keyword_communities'] = self.run_community_detection(self.keyword_graph, "Keyword Graph")
+
+    def compute_temporal_analysis(self, top_n_keywords=20, top_n_collaborations=10):
+        """Compute temporal analysis statistics"""
+        logging.info("Computing temporal analysis...")
+        
+        # Initialize analysis results if not present
+        if 'temporal_analysis' not in self.analysis_results:
+            self.analysis_results['temporal_analysis'] = {}
+        
+        # Process keywords over time
+        keywords_by_year = {}
+        
+        
+        all_keywords = []
+        for kws in self.data['Keywords']:
+            if isinstance(kws, list):
+                all_keywords.extend([kw for kw in kws if kw and pd.notna(kw)])
+            elif isinstance(kws, str):
+                
+                all_keywords.extend([kw.strip() for kw in kws.split(';') if kw.strip()])
+            
+        
+        # Get publication years
+        years = self.data['year'].dropna().astype(int).unique()
+        years = sorted(years)
+        
+        # 确保years不为空
+        if len(years) == 0:
+            logging.warning("No valid years found in the data.")
+            return
+        
+        # Calculate keyword trends over time
+        for year in years:
+            year_data = self.data[self.data['year'] == year]
+            keywords_this_year = []
+            
+            
+            for kws in year_data['Keywords']:
+                if isinstance(kws, list):
+                    keywords_this_year.extend([kw for kw in kws if kw and pd.notna(kw)])
+                elif isinstance(kws, str):
+                    keywords_this_year.extend([kw.strip() for kw in kws.split(';') if kw.strip()])
+                
+            
+            keyword_counts = Counter(keywords_this_year)
+            keywords_by_year[year] = keyword_counts
+        
+        # Get top keywords overall
+        all_keyword_counts = Counter(all_keywords)
+        top_keywords = [item[0] for item in all_keyword_counts.most_common(top_n_keywords)]
+        
+        # Track these top keywords over time
+        keyword_trends = {keyword: [] for keyword in top_keywords}
+        for year in years:
+            year_counts = keywords_by_year.get(year, Counter())
+            for keyword in top_keywords:
+                keyword_trends[keyword].append((year, year_counts.get(keyword, 0)))
+        
+        # Store results
+        self.analysis_results['temporal_analysis']['keyword_trends'] = keyword_trends
+        self.analysis_results['temporal_analysis']['top_keywords'] = top_keywords
+        
+        # Process author collaborations over time
+        if 'author_collaborations_by_year' not in self.analysis_results['temporal_analysis']:
+            collaborations_by_year = {}
+            
+            for year in years:
+                year_data = self.data[self.data['year'] == year]
+                collaborations_this_year = []
+                
+                
+                for authors in year_data['authors']:
+                    if isinstance(authors, list):
+                        
+                        if len(authors) > 1:
+                            for i in range(len(authors)):
+                                for j in range(i+1, len(authors)):
+                                    collaborations_this_year.append(tuple(sorted([authors[i], authors[j]])))
+                    elif isinstance(authors, str):
+                        
+                        author_list = [a.strip() for a in authors.split(';') if a.strip()]
+                        if len(author_list) > 1:
+                            for i in range(len(author_list)):
+                                for j in range(i+1, len(author_list)):
+                                    collaborations_this_year.append(tuple(sorted([author_list[i], author_list[j]])))
+                
+                collab_counts = Counter(collaborations_this_year)
+                collaborations_by_year[year] = collab_counts
+            
+            # Store collaboration results
+            self.analysis_results['temporal_analysis']['collaborations_by_year'] = collaborations_by_year
+            
+            # Get top collaborations overall
+            all_collabs = []
+            for year_collabs in collaborations_by_year.values():
+                all_collabs.extend(year_collabs.elements())
+            
+            top_collaborations = [item[0] for item in Counter(all_collabs).most_common(top_n_collaborations)]
+            
+            # Track top collaborations over time
+            collab_trends = {collab: [] for collab in top_collaborations}
+            for year in years:
+                year_counts = collaborations_by_year.get(year, Counter())
+                for collab in top_collaborations:
+                    collab_trends[collab].append((year, year_counts.get(collab, 0)))
+            
+            self.analysis_results['temporal_analysis']['top_collaborations'] = top_collaborations
+            self.analysis_results['temporal_analysis']['collaboration_trends'] = collab_trends
+        
+        # Process publication trends
+        publication_counts = self.data['year'].value_counts().sort_index()
+        publication_trend = [(int(year), count) for year, count in publication_counts.items()]
+        self.analysis_results['temporal_analysis']['publication_trend'] = publication_trend
+        
+        return self.analysis_results['temporal_analysis']
+
+    def save_analysis_to_json(self, filepath: str = "results/graph_metrics.json"):
+        """Saves the computed analysis results to a JSON file."""
+        logging.info(f"Saving analysis results to JSON: {filepath}")
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        # Convert complex objects (like sets or numpy types) to JSON serializable types
+        def convert_to_serializable(obj):
+            if isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+                return int(obj)
+            elif isinstance(obj, (np.float64, np.float32)):
+                # Handle NaN and Inf
+                if np.isnan(obj): return None # Or 'NaN' as string
+                if np.isinf(obj): return None # Or 'Infinity'/' -Infinity'
+                return float(obj)
+            elif isinstance(obj, (set, tuple)):
+                return list(obj)
+            elif isinstance(obj, (datetime, pd.Timestamp)):
+                 return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {str(k): convert_to_serializable(v) for k, v in obj.items()} # Ensure keys are strings
+            elif isinstance(obj, list):
+                return [convert_to_serializable(item) for item in obj]
+            # Add other type conversions if needed
+            return obj
+
+        try:
+            # Apply conversion recursively to the results dictionary
+            serializable_results = convert_to_serializable(self.analysis_results)
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(serializable_results, f, indent=4, ensure_ascii=False)
+            logging.info(f"Successfully saved analysis results to {filepath}")
+        except TypeError as e:
+            logging.error(f"Error serializing results to JSON: {e}. Results might be incomplete.")
+            # Optionally try saving partially or logging the problematic part
+            # print("Problematic data snippet:", self.analysis_results) # Be careful printing large dicts
+        except Exception as e:
+            logging.error(f"An unexpected error occurred while saving results to JSON: {e}")
 
 class ResearchDES:
     def __init__(self, env: simpy.Environment, graph_builder: ResearchGraphBuilder):
