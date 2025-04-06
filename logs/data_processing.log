@@ -9408,3 +9408,29 @@ Data processing statistics:
 2025-04-05 14:53:08,646 - INFO - Filled 1719 empty author fields
 2025-04-05 14:53:08,730 - INFO - Saved updated data to data/processed/New_And_Original_ResearchOutputs.csv
 2025-04-05 14:53:08,731 - INFO - Step 7: Added 1719 authors from bibliography
+2025-04-05 19:46:20,683 - INFO - Analysis results loaded from output/analysis_results.pkl
+2025-04-05 19:46:20,691 - INFO - Louvain method detected 119 communities
+2025-04-05 19:46:20,900 - INFO - Girvan-Newman method detected 113 communities
+2025-04-05 19:46:20,904 - INFO - Label Propagation method detected 140 communities
+2025-04-05 19:46:20,905 - INFO - Year graph Louvain method detected 19 communities
+2025-04-05 19:46:58,780 - INFO - All plots saved to output/visualizations
+2025-04-05 20:10:49,345 - INFO - Analysis results loaded from output/analysis_results.pkl
+2025-04-05 20:10:49,378 - INFO - Louvain method detected 116 communities
+2025-04-05 20:10:49,579 - INFO - Girvan-Newman method detected 110 communities
+2025-04-05 20:10:49,582 - INFO - Label Propagation method detected 133 communities
+2025-04-05 20:10:49,583 - INFO - Year graph Louvain method detected 19 communities
+2025-04-05 20:11:36,819 - INFO - All plots saved to output/visualizations
+2025-04-05 20:22:43,562 - INFO - Analysis results loaded from output/analysis_results.pkl
+2025-04-05 20:22:43,586 - INFO - Louvain method detected 115 communities
+2025-04-05 20:22:43,816 - INFO - Girvan-Newman method detected 110 communities
+2025-04-05 20:22:43,819 - INFO - Label Propagation method detected 133 communities
+2025-04-05 20:22:43,820 - INFO - Year graph Louvain method detected 19 communities
+2025-04-05 20:23:37,628 - INFO - 构建研究输出图完成: 3369 节点, 1194733 边
+2025-04-05 20:23:38,376 - INFO - All plots saved to output/visualizations
+2025-04-05 20:36:33,110 - INFO - Analysis results loaded from output/analysis_results.pkl
+2025-04-05 20:36:33,123 - INFO - Louvain method detected 116 communities
+2025-04-05 20:36:33,267 - INFO - Girvan-Newman method detected 110 communities
+2025-04-05 20:36:33,269 - INFO - Label Propagation method detected 133 communities
+2025-04-05 20:36:33,271 - INFO - Year graph Louvain method detected 19 communities
+2025-04-05 20:37:27,249 - INFO - Research output graph built: 3369 nodes, 1194733 edges
+2025-04-05 20:37:28,039 - INFO - All plots saved to output/visualizations

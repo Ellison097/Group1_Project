@@ -59,10 +59,8 @@ class ResearchGraphBuilder:
         self.G = nx.Graph()  # Main graph
         self.author_graph = nx.Graph()  # Author collaboration graph
         self.keyword_graph = nx.Graph()  # Keyword graph
-        self.citation_graph = nx.DiGraph()  # Citation graph
         self.time_graph = nx.Graph()  # Time graph
         self.institution_graph = nx.Graph()  # Institution graph
-        self.doi_graph = nx.DiGraph()  # DOI citation graph
         self.year_graph = nx.Graph()  # Year graph
         
         # Preprocess data
@@ -881,53 +879,6 @@ class ResearchGraphBuilder:
         self.keyword_graph.remove_nodes_from(isolated_nodes)
         
         logging.info(f"Keyword graph construction completed, containing {self.keyword_graph.number_of_nodes()} nodes and {self.keyword_graph.number_of_edges()} edges")
-    
-    def build_citation_graph(self):
-        """Build citation network graph"""
-        self.citation_graph = nx.DiGraph()
-        
-        # Check if there's citation information in the data
-        if 'references' not in self.data.columns or self.data['references'].isna().all():
-            logging.warning("No citation information in the data, cannot build citation graph")
-            return
-        
-        # Process citation information
-        self.data['references'] = self.data['references'].apply(safe_eval)
-        
-        # Create DOI to paper_id mapping
-        doi_to_id = {}
-        for _, row in self.data.iterrows():
-            if pd.notna(row.get('doi')):
-                doi_to_id[row['doi']] = str(row['paper_id'])
-        
-        # Add nodes and edges
-        for _, row in self.data.iterrows():
-            paper_id = str(row['paper_id'])
-            # Add current paper as node
-            if not self.citation_graph.has_node(paper_id):
-                self.citation_graph.add_node(paper_id, 
-                                            doi=row.get('doi'),
-                                            title=row.get('title'),
-                                            year=row.get('year'))
-            
-            # Process references
-            references = row['references']
-            for ref_doi in references:
-                if pd.isna(ref_doi):
-                    continue
-                    
-                # If referenced paper is in the dataset
-                if ref_doi in doi_to_id:
-                    ref_id = doi_to_id[ref_doi]
-                    # Add citation relationship edge
-                    self.citation_graph.add_edge(paper_id, ref_id, edge_type='citation')
-                else:
-                    # Referenced paper not in dataset, create external node
-                    if not self.citation_graph.has_node(ref_doi):
-                        self.citation_graph.add_node(ref_doi, external=True)
-                    self.citation_graph.add_edge(paper_id, ref_doi, edge_type='external_citation')
-        
-        logging.info(f"Citation graph construction completed, containing {self.citation_graph.number_of_nodes()} nodes and {self.citation_graph.number_of_edges()} edges")
 
 class ResearchDES:
     def __init__(self, env: simpy.Environment, graph_builder: ResearchGraphBuilder):
@@ -1192,6 +1143,13 @@ def main():
         
         print("Building year graph...")
         graph_builder.build_year_graph()
+        
+        # Build author and keyword graphs
+        print("Building author graph...")
+        graph_builder.build_author_graph()
+        
+        print("Building keyword graph...")
+        graph_builder.build_keyword_graph()
         
         # Calculate network metrics
         print("Calculating network metrics...")

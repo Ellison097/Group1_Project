@@ -17354,3 +17354,14 @@ KeyError: 'paper_0'
 2025-04-03 23:51:33,434 - INFO - Girvan-Newman方法检测到 113 个社区
 2025-04-03 23:51:33,437 - INFO - Label Propagation方法检测到 140 个社区
 2025-04-03 23:51:33,442 - INFO - 年份图Louvain方法检测到 19 个社区
+2025-04-05 20:02:55,634 - INFO - Data preprocessing completed, processed 3369 records
+2025-04-05 20:08:44,419 - INFO - Main graph construction completed, containing 3369 nodes and 465259 edges
+2025-04-05 20:08:44,824 - INFO - Institution graph construction completed, containing 429 nodes and 362 edges
+2025-04-05 20:08:50,838 - INFO - Year graph construction completed, containing 37 nodes and 45 edges
+2025-04-05 20:08:52,675 - INFO - Author collaboration graph construction completed, containing 7 nodes and 9 edges
+2025-04-05 20:08:54,215 - INFO - Keyword graph construction completed, containing 2029 nodes and 53558 edges
+2025-04-05 20:08:54,225 - INFO - Louvain method detected 117 communities
+2025-04-05 20:08:54,339 - INFO - Girvan-Newman method detected 110 communities
+2025-04-05 20:08:54,341 - INFO - Label Propagation method detected 133 communities
+2025-04-05 20:08:54,342 - INFO - Year graph Louvain method detected 19 communities
+2025-04-05 20:08:56,005 - INFO - Analysis results have been saved to output/analysis_results.pkl

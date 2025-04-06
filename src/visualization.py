@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, List, Tuple, Any
 import logging
-from collections import defaultdict
+from collections import defaultdict, Counter
 import os
 
 # Set logging
@@ -29,7 +29,7 @@ class ResearchGraphVisualizer:
         """
         self.analyzer = graph_analyzer
         self.data = graph_analyzer.data
-        self.main_graph = graph_analyzer.doi_graph
+        self.main_graph = graph_analyzer.G
         self.institution_graph = graph_analyzer.institution_graph
         self.year_graph = graph_analyzer.year_graph
         
@@ -577,7 +577,7 @@ class ResearchGraphVisualizer:
         # Create edge trace
         edge_trace = go.Scatter(
             x=edge_x, y=edge_y,
-            line=dict(width=0.5, color='gray'),
+            line=dict(width=0.8, color='lightgray'),
             hoverinfo='none',
             mode='lines'
         )
@@ -589,7 +589,8 @@ class ResearchGraphVisualizer:
             hoverinfo='text',
             text=node_text,
             marker=dict(
-                showscale=False,
+                showscale=True,
+                colorscale='Viridis',
                 size=node_size,
                 color=node_color,
                 colorbar=dict(
@@ -597,7 +598,8 @@ class ResearchGraphVisualizer:
                     title='Collaboration Count',
                     xanchor='left',
                     titleside='right'
-                )
+                ),
+                line=dict(width=1, color='darkgray')
             )
         )
         
@@ -625,11 +627,11 @@ class ResearchGraphVisualizer:
         Returns:
             plotly.graph_objects.Figure: Main graph
         """
-        if not self.main_graph:
-            return self._create_empty_plot("No main graph data available")
-            
+        if not hasattr(self.analyzer, 'G') or self.analyzer.G.number_of_nodes() == 0:
+            return self._create_empty_plot("Main graph data not available or empty")
+        
         # Get node positions
-        pos = nx.spring_layout(self.main_graph)
+        pos = nx.spring_layout(self.analyzer.G)
         
         # Prepare node data
         node_x = []
@@ -638,13 +640,13 @@ class ResearchGraphVisualizer:
         node_size = []
         node_color = []
         
-        for node in self.main_graph.nodes():
+        for node in self.analyzer.G.nodes():
             x, y = pos[node]
             node_x.append(x)
             node_y.append(y)
             
             # Get node attributes
-            attrs = self.main_graph.nodes[node]
+            attrs = self.analyzer.G.nodes[node]
             title = attrs.get('title', 'Unknown')
             year = attrs.get('year', 'Unknown')
             doi = attrs.get('doi', 'Unknown')
@@ -652,7 +654,7 @@ class ResearchGraphVisualizer:
             node_text.append(f"Title: {title}<br>Year: {year}<br>DOI: {doi}")
             
             # Use node degree as node size
-            degree = self.main_graph.degree(node)
+            degree = self.analyzer.G.degree(node)
             node_size.append(10 + degree * 2)
             
             # Set color based on year if available
@@ -672,24 +674,22 @@ class ResearchGraphVisualizer:
         edge_x = []
         edge_y = []
         edge_text = []
-        edge_color = []
         
-        for u, v, data in self.main_graph.edges(data=True):
+        for u, v, data in self.analyzer.G.edges(data=True):
             x0, y0 = pos[u]
             x1, y1 = pos[v]
             edge_x.extend([x0, x1, None])
             edge_y.extend([y0, y1, None])
             
             # Get edge type
-            edge_type = data.get('type', 'Unknown')
-            edge_color.append(self._get_edge_color(edge_type))
+            edge_type = data.get('edge_type', 'Unknown')
             
             edge_text.append(f"Type: {edge_type}")
         
         # Create edge trace
         edge_trace = go.Scatter(
             x=edge_x, y=edge_y,
-            line=dict(width=0.5, color=edge_color),
+            line=dict(width=0.5, color='lightgray'),
             hoverinfo='text',
             text=edge_text,
             mode='lines'
@@ -732,11 +732,52 @@ class ResearchGraphVisualizer:
         Returns:
             plotly.graph_objects.Figure: Author graph
         """
-        if not hasattr(self.analyzer, 'author_graph') or not self.analyzer.author_graph:
-            return self._create_empty_plot("No author graph data available")
+        if not hasattr(self.analyzer, 'G') or self.analyzer.G.number_of_nodes() == 0:
+            return self._create_empty_plot("Main graph data not available or empty")
+        
+        # Create temporary author graph
+        author_graph = nx.Graph()
+        author_papers = defaultdict(list)
+        
+        # Extract author information from node attributes of the main graph
+        for node in self.analyzer.G.nodes():
+            paper_id = node
+            authors = self.analyzer.G.nodes[node].get('authors', [])
             
+            if not authors:
+                # Try to get authors from original data
+                paper_idx = int(node) if node.isdigit() else -1
+                if 0 <= paper_idx < len(self.analyzer.data):
+                    authors = self.analyzer.data.iloc[paper_idx].get('authors', [])
+            
+            for author in authors:
+                if pd.notna(author) and author:
+                    author_papers[author].append(paper_id)
+        
+        # Add author nodes
+        for author, papers in author_papers.items():
+            author_graph.add_node(author, papers=papers)
+        
+        # Add collaboration edges
+        for i, (author1, papers1) in enumerate(author_papers.items()):
+            for author2, papers2 in list(author_papers.items())[i+1:]:
+                common_papers = set(papers1) & set(papers2)
+                if common_papers:
+                    author_graph.add_edge(author1, author2, 
+                                        weight=len(common_papers),
+                                        common_papers=list(common_papers))
+        
+        # Remove isolated nodes
+        isolated_nodes = [node for node in author_graph.nodes() 
+                         if author_graph.degree(node) == 0]
+        author_graph.remove_nodes_from(isolated_nodes)
+        
+        # If graph is empty, return empty graph
+        if author_graph.number_of_nodes() == 0:
+            return self._create_empty_plot("No author collaboration data available")
+        
         # Get node positions
-        pos = nx.spring_layout(self.analyzer.author_graph)
+        pos = nx.spring_layout(author_graph, k=0.5, iterations=50)  # Increase node spacing
         
         # Prepare node data
         node_x = []
@@ -744,29 +785,52 @@ class ResearchGraphVisualizer:
         node_text = []
         node_size = []
         node_color = []
+        node_labels = []
         
-        for node in self.analyzer.author_graph.nodes():
+        # Select top 100 most collaborative authors to show more authors
+        top_authors = sorted(author_graph.nodes(), 
+                            key=lambda x: author_graph.degree(x), 
+                            reverse=True)[:100]
+        top_author_graph = author_graph.subgraph(top_authors)
+        
+        for node in top_author_graph.nodes():
             x, y = pos[node]
             node_x.append(x)
             node_y.append(y)
             
             # Get node attributes
-            papers = self.analyzer.author_graph.nodes[node].get('papers', [])
+            papers = author_graph.nodes[node].get('papers', [])
             paper_count = len(papers)
             
-            node_text.append(f"Author: {node}<br>Papers: {paper_count}")
+            # Show full author name
+            node_text.append(f"Author: {node}<br>Papers: {paper_count}<br>Collaborations: {top_author_graph.degree(node)}")
+            
+            # Show short author name label
+            name_parts = node.split()
+            if len(name_parts) > 0:
+                last_name = name_parts[-1]
+                if len(name_parts) > 1:
+                    initials = ''.join([n[0] for n in name_parts[:-1]])
+                    short_name = f"{initials}. {last_name}"
+                else:
+                    short_name = last_name
+                node_labels.append(short_name)
+            else:
+                node_labels.append(node)
             
             # Use paper count as node size
-            node_size.append(5 + paper_count * 2)
+            node_size.append(10 + paper_count * 3)
             
             # Use degree (collaboration count) for color
-            degree = self.analyzer.author_graph.degree(node)
-            if degree > 10:
+            degree = top_author_graph.degree(node)
+            if degree > 15:
                 node_color.append('darkred')  # Highly collaborative authors
+            elif degree > 10:
+                node_color.append('red')  # Very collaborative authors
             elif degree > 5:
-                node_color.append('red')  # Moderately collaborative authors
+                node_color.append('orange')  # Moderately collaborative authors
             elif degree > 2:
-                node_color.append('orange')  # Somewhat collaborative authors
+                node_color.append('green')  # Somewhat collaborative authors
             else:
                 node_color.append('blue')  # Less collaborative authors
         
@@ -775,41 +839,44 @@ class ResearchGraphVisualizer:
         edge_y = []
         edge_width = []
         
-        for u, v, data in self.analyzer.author_graph.edges(data=True):
+        for u, v, data in top_author_graph.edges(data=True):
             x0, y0 = pos[u]
             x1, y1 = pos[v]
             edge_x.extend([x0, x1, None])
             edge_y.extend([y0, y1, None])
             
-            # Use weight for edge width
+            # Adjust edge width based on collaboration count
             weight = data.get('weight', 1)
-            if weight > 3:
-                width = 4  # Strong collaboration
-            elif weight > 1:
-                width = 2  # Multiple collaborations
-            else:
-                width = 1  # Single collaboration
-                
-            edge_width.append(width)
+            edge_width.append(0.5 + weight * 0.5)
         
         # Create edge trace
         edge_trace = go.Scatter(
             x=edge_x, y=edge_y,
-            line=dict(width=1, color='gray'),
+            line=dict(width=1, color='lightgray'),
             hoverinfo='none',
             mode='lines'
         )
         
-        # Create node trace
+        # Create node trace with labels
         node_trace = go.Scatter(
             x=node_x, y=node_y,
-            mode='markers',
+            mode='markers+text',
             hoverinfo='text',
             text=node_text,
+            textposition='top center',
+            textfont=dict(size=8, color='black'),  # 小字体显示名称
+            customdata=node_labels,  # 存储简短的作者名
             marker=dict(
-                showscale=False,
+                showscale=True,
+                colorscale='Viridis',
                 size=node_size,
                 color=node_color,
+                colorbar=dict(
+                    thickness=15,
+                    title='Collaboration Level',
+                    xanchor='left',
+                    titleside='right'
+                ),
                 line=dict(width=1, color='darkgray')
             )
         )
@@ -817,7 +884,7 @@ class ResearchGraphVisualizer:
         # Create figure
         fig = go.Figure(data=[edge_trace, node_trace],
                      layout=go.Layout(
-                         title='Author Collaboration Network',
+                         title='Top 100 Author Collaboration Network',
                          showlegend=False,
                          hovermode='closest',
                          margin=dict(b=20,l=5,r=5,t=40),
@@ -929,105 +996,180 @@ class ResearchGraphVisualizer:
                      ))
         
         return fig
-        
-    def plot_citation_graph(self) -> go.Figure:
-        """Draw citation network graph
+    
+    def plot_top_institution_collaborations(self) -> go.Figure:
+        """Draw top institution collaborations
         
         Returns:
-            plotly.graph_objects.Figure: Citation graph
+            plotly.graph_objects.Figure: Top institution collaborations
         """
-        if not hasattr(self.analyzer, 'citation_graph') or not self.analyzer.citation_graph:
-            return self._create_empty_plot("No citation graph data available")
-            
-        # Get node positions - use hierarchical layout for citations
-        pos = nx.spring_layout(self.analyzer.citation_graph)
+        # Create institution collaboration network from original data
+        institution_collab = defaultdict(int)
         
-        # Prepare node data
-        node_x = []
-        node_y = []
-        node_text = []
-        node_size = []
-        node_color = []
-        
-        for node in self.analyzer.citation_graph.nodes():
-            x, y = pos[node]
-            node_x.append(x)
-            node_y.append(y)
+        for _, row in self.analyzer.data.iterrows():
+            institutions = row.get('institution_display_names', [])
             
-            # Get node attributes
-            attrs = self.analyzer.citation_graph.nodes[node]
-            title = attrs.get('title', 'Unknown')
-            year = attrs.get('year', 'Unknown')
+            # Process institution list - split by semicolon
+            if isinstance(institutions, str):
+                institutions = [inst.strip() for inst in institutions.split(';')]
             
-            node_text.append(f"Title: {title}<br>Year: {year}")
+            if len(institutions) > 1:
+                # Count institution pairs
+                for i in range(len(institutions)):
+                    for j in range(i+1, len(institutions)):
+                        if pd.notna(institutions[i]) and pd.notna(institutions[j]):
+                            pair = tuple(sorted([institutions[i], institutions[j]]))
+                            institution_collab[pair] += 1
+        
+        # Get top 15 most common collaboration relationships
+        top_collaborations = sorted(
+            institution_collab.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )[:15]
+        
+        if not top_collaborations:
+            return self._create_empty_plot("No institution collaboration data available")
+        
+        # Prepare plotting data - use more concise institution name display
+        institutions = []
+        for pair in top_collaborations:
+            inst1 = pair[0][0][:20] + "..." if len(pair[0][0]) > 20 else pair[0][0]
+            inst2 = pair[0][1][:20] + "..." if len(pair[0][1]) > 20 else pair[0][1]
+            institutions.append(f"{inst1} & {inst2}")
             
-            # Use citation count for node size
-            in_degree = self.analyzer.citation_graph.in_degree(node)
-            out_degree = self.analyzer.citation_graph.out_degree(node)
-            node_size.append(5 + in_degree * 2)
-            
-            # Color by year if available
-            if year != 'Unknown' and isinstance(year, (int, float)):
-                if year < 2000:
-                    node_color.append('blue')  # Older papers
-                elif year < 2010:
-                    node_color.append('green')  # Medium-aged papers
-                elif year < 2020:
-                    node_color.append('orange')  # Newer papers
-                else:
-                    node_color.append('red')  # Recent papers
-            else:
-                node_color.append('gray')  # Unknown year
+        counts = [pair[1] for pair in top_collaborations]
         
-        # Prepare edge data
-        edge_x = []
-        edge_y = []
-        edge_text = []
+        # Create bar chart
+        fig = go.Figure(data=[
+            go.Bar(
+                x=counts,
+                y=institutions,
+                orientation='h'
+            )
+        ])
         
-        for u, v in self.analyzer.citation_graph.edges():
-            x0, y0 = pos[u]
-            x1, y1 = pos[v]
-            edge_x.extend([x0, x1, None])
-            edge_y.extend([y0, y1, None])
-            
-            # Edge text - explains citation direction
-            u_title = self.analyzer.citation_graph.nodes[u].get('title', 'Unknown')
-            v_title = self.analyzer.citation_graph.nodes[v].get('title', 'Unknown')
-            edge_text.append(f"{u_title} cites {v_title}")
-        
-        # Create edge trace
-        edge_trace = go.Scatter(
-            x=edge_x, y=edge_y,
-            line=dict(width=0.5, color='lightgray'),
-            hoverinfo='text',
-            text=edge_text,
-            mode='lines'
-        )
-        
-        # Create node trace
-        node_trace = go.Scatter(
-            x=node_x, y=node_y,
-            mode='markers',
-            hoverinfo='text',
-            text=node_text,
-            marker=dict(
-                showscale=False,
-                size=node_size,
-                color=node_color,
-                line=dict(width=1, color='darkgray')
+        fig.update_layout(
+            title='Top 15 Institution Collaborations',
+            xaxis_title='Collaboration Count',
+            yaxis_title='Institution Pairs',
+            template='plotly_white',
+            height=800,  # Increase height to give text more space
+            margin=dict(l=250, r=20, t=50, b=50),  # Increase left margin to accommodate institution names
+            yaxis=dict(
+                tickfont=dict(size=10)  # Reduce y-axis label font size
             )
         )
         
-        # Create figure
-        fig = go.Figure(data=[edge_trace, node_trace],
-                     layout=go.Layout(
-                         title='Citation Network',
-                         showlegend=False,
-                         hovermode='closest',
-                         margin=dict(b=20,l=5,r=5,t=40),
-                         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-                     ))
+        return fig
+    
+    def plot_top_keyword_cooccurrences(self) -> go.Figure:
+        """Draw top keyword co-occurrences
+        
+        Returns:
+            plotly.graph_objects.Figure: Top keyword co-occurrences
+        """
+        # Create keyword co-occurrence network from original data
+        keyword_cooccur = defaultdict(int)
+        
+        for _, row in self.analyzer.data.iterrows():
+            keywords = row.get('keywords', [])
+            
+            # Process keyword list - split by comma
+            if isinstance(keywords, str):
+                keywords = [kw.strip() for kw in keywords.split(',')]
+            
+            if len(keywords) > 1:
+                # Count keyword pairs
+                for i in range(len(keywords)):
+                    for j in range(i+1, len(keywords)):
+                        if pd.notna(keywords[i]) and pd.notna(keywords[j]):
+                            pair = tuple(sorted([keywords[i], keywords[j]]))
+                            keyword_cooccur[pair] += 1
+        
+        # Get top 20 most common co-occurrence relationships
+        top_cooccurrences = sorted(
+            keyword_cooccur.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )[:20]
+        
+        if not top_cooccurrences:
+            return self._create_empty_plot("No keyword co-occurrence data available")
+        
+        # Prepare plotting data
+        keywords = [f"{pair[0][0]} + {pair[0][1]}" for pair in top_cooccurrences]
+        counts = [pair[1] for pair in top_cooccurrences]
+        
+        # Create bar chart
+        fig = go.Figure(data=[
+            go.Bar(
+                x=counts,
+                y=keywords,
+                orientation='h'
+            )
+        ])
+        
+        fig.update_layout(
+            title='Top 20 Keyword Co-occurrences',
+            xaxis_title='Co-occurrence Count',
+            yaxis_title='Keyword Pairs',
+            template='plotly_white',
+            height=700
+        )
+        
+        return fig
+    
+    def plot_top_keywords(self) -> go.Figure:
+        """Draw top keywords
+        
+        Returns:
+            plotly.graph_objects.Figure: Top keywords
+        """
+        # Extract keywords from original data
+        keyword_counts = defaultdict(int)
+        
+        for _, row in self.analyzer.data.iterrows():
+            keywords = row.get('keywords', [])
+            
+            # Process keyword list - split by comma
+            if isinstance(keywords, str):
+                keywords = [kw.strip() for kw in keywords.split(',')]
+            
+            for keyword in keywords:
+                if pd.notna(keyword) and keyword:
+                    keyword_counts[keyword] += 1
+        
+        # Get top 30 most common keywords
+        top_keywords = sorted(
+            keyword_counts.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )[:30]
+        
+        if not top_keywords:
+            return self._create_empty_plot("No keyword data available")
+        
+        # Prepare plotting data
+        keywords = [pair[0] for pair in top_keywords]
+        counts = [pair[1] for pair in top_keywords]
+        
+        # Create bar chart
+        fig = go.Figure(data=[
+            go.Bar(
+                x=counts,
+                y=keywords,
+                orientation='h'
+            )
+        ])
+        
+        fig.update_layout(
+            title='Top 30 Keywords',
+            xaxis_title='Occurrence Count',
+            yaxis_title='Keywords',
+            template='plotly_white',
+            height=800
+        )
         
         return fig
     
@@ -1045,7 +1187,10 @@ class ResearchGraphVisualizer:
             'citation': 'red',
             'institution': 'green',
             'keyword': 'magenta',
-            'topic': 'purple'
+            'topic': 'purple',
+            'author_shared': 'blue',
+            'keyword_similarity': 'magenta',
+            'institution_shared': 'green'
         }
         
         return color_map.get(edge_type, 'gray')
@@ -1064,6 +1209,10 @@ class ResearchGraphVisualizer:
         fig_institution = self.plot_institution_collaboration()
         fig_institution.write_html(f"{output_dir}/institution_collaboration.html")
         
+        # Top institution collaborations
+        fig_top_institution = self.plot_top_institution_collaborations()
+        fig_top_institution.write_html(f"{output_dir}/top_institution_collaborations.html")
+        
         fig_degree = self.plot_degree_distribution()
         fig_degree.write_html(f"{output_dir}/centrality_distribution.html")
         
@@ -1077,13 +1226,17 @@ class ResearchGraphVisualizer:
         fig_author = self.plot_author_graph()
         fig_author.write_html(f"{output_dir}/author_graph.html")
         
-        # Keyword graph
+        # Keyword graphs
         fig_keyword = self.plot_keyword_graph()
         fig_keyword.write_html(f"{output_dir}/keyword_graph.html")
         
-        # Citation graph
-        fig_citation = self.plot_citation_graph()
-        fig_citation.write_html(f"{output_dir}/citation_graph.html")
+        # Top keyword co-occurrences
+        fig_top_keyword_cooccur = self.plot_top_keyword_cooccurrences()
+        fig_top_keyword_cooccur.write_html(f"{output_dir}/top_keyword_cooccurrences.html")
+        
+        # Top keywords
+        fig_top_keywords = self.plot_top_keywords()
+        fig_top_keywords.write_html(f"{output_dir}/top_keywords.html")
         
         # Temporal analysis
         fig_year = self.plot_year_activity()
@@ -1091,6 +1244,14 @@ class ResearchGraphVisualizer:
         
         fig_topic = self.plot_topic_evolution()
         fig_topic.write_html(f"{output_dir}/topic_evolution.html")
+        
+        # Year subplots analysis
+        fig_year_subplots = self.plot_year_subplots()
+        fig_year_subplots.write_html(f"{output_dir}/year_subplots.html")
+        
+        # Research output graph
+        fig_output_graph = self.plot_research_output_graph()
+        fig_output_graph.write_html(f"{output_dir}/research_output_graph.html")
         
         logger.info(f"All plots saved to {output_dir}")
     
@@ -1118,6 +1279,439 @@ class ResearchGraphVisualizer:
                 )
             ]
         )
+        
+        return fig
+        
+    def plot_year_subplots(self) -> go.Figure:
+        """Create year-based research output subplots visualization
+        
+        Create a figure with multiple subplots showing research trends by year:
+        1. Number of papers published per year
+        2. Average citations per year
+        3. Most active institutions by year
+        4. Popular keywords trends by year
+        
+        Returns:
+            plotly.graph_objects.Figure: Annual research output subplots
+        """
+        # Check if data is available
+        if not hasattr(self.analyzer, 'data') or len(self.analyzer.data) == 0:
+            return self._create_empty_plot("No data available for annual analysis")
+        
+        # Create subplot layout
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=(
+                "Papers Published per Year", 
+                "Average Citations per Year", 
+                "Most Active Institutions by Year",
+                "Popular Keywords by Year"
+            ),
+            vertical_spacing=0.12,
+            horizontal_spacing=0.1
+        )
+        
+        # Prepare year range
+        years = []
+        for _, row in self.analyzer.data.iterrows():
+            year = row.get('year')
+            if pd.notna(year) and isinstance(year, (int, float)):
+                years.append(int(year))
+        
+        if not years:
+            return self._create_empty_plot("No year data available for analysis")
+        
+        min_year, max_year = min(years), max(years)
+        year_range = list(range(min_year, max_year + 1))
+        
+        # 1. Papers per year (bar chart)
+        year_counts = Counter(years)
+        paper_counts = [year_counts.get(year, 0) for year in year_range]
+        
+        fig.add_trace(
+            go.Bar(
+                x=year_range, 
+                y=paper_counts,
+                marker_color='royalblue'
+            ),
+            row=1, col=1
+        )
+        
+        # 2. Average citations per year (line chart)
+        year_citations = defaultdict(list)
+        for _, row in self.analyzer.data.iterrows():
+            year = row.get('year')
+            citations = row.get('citation_count', 0)
+            if pd.notna(year) and isinstance(year, (int, float)) and pd.notna(citations):
+                year_citations[int(year)].append(float(citations))
+        
+        avg_citations = []
+        for year in year_range:
+            citations = year_citations.get(year, [])
+            avg = sum(citations) / len(citations) if citations else 0
+            avg_citations.append(avg)
+        
+        fig.add_trace(
+            go.Scatter(
+                x=year_range, 
+                y=avg_citations,
+                mode='lines+markers',
+                line=dict(color='green', width=2),
+                marker=dict(size=8)
+            ),
+            row=1, col=2
+        )
+        
+        # 3. Most active institutions by year (heatmap)
+        year_institutions = defaultdict(Counter)
+        for _, row in self.analyzer.data.iterrows():
+            year = row.get('year')
+            institutions = row.get('institution_display_names', [])
+            
+            if pd.notna(year) and isinstance(year, (int, float)):
+                if isinstance(institutions, str):
+                    institutions = [inst.strip() for inst in institutions.split(';')]
+                
+                for inst in institutions:
+                    if pd.notna(inst) and inst:
+                        year_institutions[int(year)][inst] += 1
+        
+        # Get top 5 institutions per year
+        top_institutions_by_year = {}
+        all_top_institutions = set()
+        for year in year_range:
+            counter = year_institutions.get(year, Counter())
+            top_5 = [inst for inst, _ in counter.most_common(5)]
+            top_institutions_by_year[year] = top_5
+            all_top_institutions.update(top_5)
+        
+        if all_top_institutions:
+            # Show maximum 10 top institutions
+            top_overall = list(all_top_institutions)[:10]
+            
+            # Create heatmap data
+            institution_data = []
+            for inst in top_overall:
+                inst_data = []
+                for year in year_range:
+                    counter = year_institutions.get(year, Counter())
+                    inst_data.append(counter.get(inst, 0))
+                institution_data.append(inst_data)
+            
+            # Shorten institution names for display
+            short_names = []
+            for inst in top_overall:
+                if len(inst) > 20:
+                    short_name = inst[:17] + "..."
+                else:
+                    short_name = inst
+                short_names.append(short_name)
+            
+            fig.add_trace(
+                go.Heatmap(
+                    z=institution_data,
+                    x=year_range,
+                    y=short_names,
+                    colorscale='Viridis'
+                ),
+                row=2, col=1
+            )
+        
+        # 4. Popular keywords by year (line chart)
+        year_keywords = defaultdict(Counter)
+        for _, row in self.analyzer.data.iterrows():
+            year = row.get('year')
+            keywords = row.get('keywords', [])
+            
+            if pd.notna(year) and isinstance(year, (int, float)):
+                if isinstance(keywords, str):
+                    keywords = [kw.strip() for kw in keywords.split(',')]
+                
+                for kw in keywords:
+                    if pd.notna(kw) and kw:
+                        year_keywords[int(year)][kw] += 1
+        
+        # Get top 5 keywords across all years
+        all_keywords = Counter()
+        for year_counter in year_keywords.values():
+            all_keywords.update(year_counter)
+        
+        top_keywords = [kw for kw, _ in all_keywords.most_common(5)]
+        
+        if top_keywords:
+            for kw in top_keywords:
+                kw_data = []
+                for year in year_range:
+                    counter = year_keywords.get(year, Counter())
+                    kw_data.append(counter.get(kw, 0))
+                
+                fig.add_trace(
+                    go.Scatter(
+                        x=year_range,
+                        y=kw_data,
+                        mode='lines+markers',
+                        name=kw
+                    ),
+                    row=2, col=2
+                )
+        
+        # Update layout
+        fig.update_layout(
+            title_text="Annual Research Output Analysis",
+            height=800,
+            width=1200,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.2,
+                xanchor="center",
+                x=0.5
+            )
+        )
+        
+        # Update X-axis range for consistency
+        fig.update_xaxes(title_text="Year", range=[min_year-0.5, max_year+0.5])
+        
+        # Update Y-axis titles
+        fig.update_yaxes(title_text="Number of Papers", row=1, col=1)
+        fig.update_yaxes(title_text="Average Citations", row=1, col=2)
+        fig.update_yaxes(title_text="Institution", row=2, col=1)
+        fig.update_yaxes(title_text="Keyword Occurrences", row=2, col=2)
+        
+        return fig
+        
+    def build_research_output_graph(self) -> nx.Graph:
+        """Build research output graph with papers as nodes and shared attributes as edges
+        
+        Nodes: Research papers
+        Edges: Shared authors, keywords, institutions, etc.
+        
+        Returns:
+            nx.Graph: Research output graph
+        """
+        if not hasattr(self.analyzer, 'data') or len(self.analyzer.data) == 0:
+            logger.warning("No data available to build research output graph")
+            return nx.Graph()
+        
+        # Create new graph
+        output_graph = nx.Graph()
+        
+        # Create nodes for each paper
+        for i, row in self.analyzer.data.iterrows():
+            paper_id = str(i)
+            title = row.get('title', f"Paper {i}")
+            year = row.get('year', None)
+            doi = row.get('doi', None)
+            
+            # Add node
+            output_graph.add_node(
+                paper_id,
+                title=title,
+                year=year,
+                doi=doi,
+                type='paper'
+            )
+        
+        # Create edges - based on shared authors
+        author_papers = defaultdict(list)
+        for i, row in self.analyzer.data.iterrows():
+            paper_id = str(i)
+            authors = row.get('authors', [])
+            
+            if isinstance(authors, str):
+                authors = [a.strip() for a in authors.split(',')]
+            
+            for author in authors:
+                if pd.notna(author) and author:
+                    author_papers[author].append(paper_id)
+        
+        # Add shared author edges
+        for author, papers in author_papers.items():
+            if len(papers) > 1:  # Only when author has written at least 2 papers
+                for i in range(len(papers)):
+                    for j in range(i+1, len(papers)):
+                        # If edge exists, increase weight
+                        if output_graph.has_edge(papers[i], papers[j]):
+                            output_graph[papers[i]][papers[j]]['weight'] += 1
+                            output_graph[papers[i]][papers[j]]['authors'].append(author)
+                        else:
+                            output_graph.add_edge(
+                                papers[i], papers[j],
+                                edge_type='author_shared',
+                                weight=1,
+                                authors=[author]
+                            )
+        
+        # Create edges - based on shared keywords
+        keyword_papers = defaultdict(list)
+        for i, row in self.analyzer.data.iterrows():
+            paper_id = str(i)
+            keywords = row.get('keywords', [])
+            
+            if isinstance(keywords, str):
+                keywords = [k.strip() for k in keywords.split(',')]
+            
+            for keyword in keywords:
+                if pd.notna(keyword) and keyword:
+                    keyword_papers[keyword].append(paper_id)
+        
+        # Add shared keyword edges
+        for keyword, papers in keyword_papers.items():
+            if len(papers) > 1:  # Only when keyword appears in at least 2 papers
+                for i in range(len(papers)):
+                    for j in range(i+1, len(papers)):
+                        # If edge exists, increase weight
+                        if output_graph.has_edge(papers[i], papers[j]):
+                            output_graph[papers[i]][papers[j]]['weight'] += 0.5
+                            if 'keywords' in output_graph[papers[i]][papers[j]]:
+                                output_graph[papers[i]][papers[j]]['keywords'].append(keyword)
+                            else:
+                                output_graph[papers[i]][papers[j]]['keywords'] = [keyword]
+                        else:
+                            output_graph.add_edge(
+                                papers[i], papers[j],
+                                edge_type='keyword_similarity',
+                                weight=0.5,
+                                keywords=[keyword]
+                            )
+        
+        logger.info(f"Research output graph built: {output_graph.number_of_nodes()} nodes, {output_graph.number_of_edges()} edges")
+        return output_graph
+    
+    def plot_research_output_graph(self) -> go.Figure:
+        """Draw research output graph showing relationships between papers
+        
+        Returns:
+            plotly.graph_objects.Figure: Research output graph
+        """
+        # Build research output graph
+        output_graph = self.build_research_output_graph()
+        
+        if output_graph.number_of_nodes() == 0:
+            return self._create_empty_plot("No data available to build research output graph")
+        
+        # If graph is too large, limit to most important nodes
+        if output_graph.number_of_nodes() > 100:
+            # Select most important nodes based on degree and edge weights
+            node_importance = {}
+            for node in output_graph.nodes():
+                node_importance[node] = sum(data.get('weight', 1) for _, _, data in output_graph.edges(node, data=True))
+            
+            top_nodes = sorted(node_importance.keys(), key=lambda x: node_importance[x], reverse=True)[:100]
+            output_graph = output_graph.subgraph(top_nodes)
+        
+        # Get node positions
+        pos = nx.spring_layout(output_graph, k=0.6, iterations=50)
+        
+        # Prepare node data
+        node_x = []
+        node_y = []
+        node_text = []
+        node_size = []
+        node_color = []
+        
+        for node in output_graph.nodes():
+            x, y = pos[node]
+            node_x.append(x)
+            node_y.append(y)
+            
+            # Get node attributes
+            title = output_graph.nodes[node].get('title', f"Paper {node}")
+            year = output_graph.nodes[node].get('year', 'Unknown')
+            doi = output_graph.nodes[node].get('doi', 'Unknown')
+            
+            node_text.append(f"Title: {title}<br>Year: {year}<br>DOI: {doi}")
+            
+            # Node size based on degree
+            degree = output_graph.degree(node, weight='weight')
+            node_size.append(10 + degree * 2)
+            
+            # Node color based on year
+            if year != 'Unknown' and isinstance(year, (int, float)):
+                if year < 2000:
+                    node_color.append('blue')  # Before 2000
+                elif year < 2010:
+                    node_color.append('green')  # 2000-2009
+                elif year < 2020:
+                    node_color.append('orange')  # 2010-2019
+                else:
+                    node_color.append('red')  # After 2020
+            else:
+                node_color.append('gray')  # Unknown year
+        
+        # Prepare edge data
+        edge_x = []
+        edge_y = []
+        edge_width = []
+        edge_text = []
+        
+        for u, v, data in output_graph.edges(data=True):
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
+            edge_x.extend([x0, x1, None])
+            edge_y.extend([y0, y1, None])
+            
+            edge_type = data.get('edge_type', 'Unknown')
+            weight = data.get('weight', 1)
+            
+            if edge_type == 'author_shared':
+                authors = data.get('authors', [])
+                text = f"Shared Authors: {', '.join(authors[:3])}"
+                if len(authors) > 3:
+                    text += f" and {len(authors)} others"
+                edge_text.append(text)
+            elif edge_type == 'keyword_similarity':
+                keywords = data.get('keywords', [])
+                text = f"Shared Keywords: {', '.join(keywords[:3])}"
+                if len(keywords) > 3:
+                    text += f" and {len(keywords)} others"
+                edge_text.append(text)
+            else:
+                edge_text.append(f"Relationship Type: {edge_type}")
+            
+            edge_width.append(0.5 + weight)
+        
+        # Create edge trace
+        edge_trace = go.Scatter(
+            x=edge_x, y=edge_y,
+            line=dict(width=0.8, color='lightgray'),
+            hoverinfo='text',
+            text=edge_text,
+            mode='lines'
+        )
+        
+        # Create node trace
+        node_trace = go.Scatter(
+            x=node_x, y=node_y,
+            mode='markers',
+            hoverinfo='text',
+            text=node_text,
+            marker=dict(
+                showscale=True,
+                colorscale='Viridis',
+                size=node_size,
+                color=node_color,
+                colorbar=dict(
+                    thickness=15,
+                    title='Year Distribution',
+                    xanchor='left',
+                    titleside='right'
+                ),
+                line=dict(width=1, color='darkgray')
+            )
+        )
+        
+        # Create figure
+        fig = go.Figure(data=[edge_trace, node_trace],
+                     layout=go.Layout(
+                         title='Research Output Relationship Graph',
+                         showlegend=False,
+                         hovermode='closest',
+                         margin=dict(b=20,l=5,r=5,t=40),
+                         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
+                     ))
         
         return fig
 
