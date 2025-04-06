@@ -100,161 +100,280 @@ This will:
 
 This approach is more efficient for repeated runs as it avoids reprocessing existing data.
 
+For visual reference of the execution process, screenshots of each step's output can be found in the `screenshot` directory. These images can help you understand what to expect when running each component of the pipeline.
+
 ### 0.5 Report Structure
 
 The remainder of this report details our implementation of each stage of the analysis pipeline, the challenges encountered, and the results achieved. By combining web scraping, API integration, network analysis, and advanced visualization techniques, we have developed a comprehensive framework for understanding the FSRDC research ecosystem and its evolution over time. Our findings provide valuable insights for researchers, institutions, and policymakers seeking to maximize the scientific and societal impact of restricted federal data resources.
 
 ## 1. Web Scraping
 
-Our web scraping approach focuses on extracting foundational research output metadata from the Federal Statistical Research Data Centers (FSRDC) website. The goal is to gather an initial set of potential FSRDC-related projects, which will then undergo further validation and enrichment in subsequent pipeline stages. The implementation uses a systematic process with robust error handling and rate limiting to ensure reliable data collection.
+Our web scraping approach focuses on extracting research output metadata from multiple scholarly sources to build a comprehensive dataset of potential FSRDC-related projects. The implementation uses a systematic process with robust error handling, multi-source extraction, rate limiting, and intelligent recovery mechanisms to ensure reliable data collection.
 
-### 1.1 Implementation Architecture
+### 1.1 Implementation Architecture 
 
 The web scraping component is implemented in `src/web_scraping.py` using a `WebScraper` class that encapsulates the core logic:
 
 1.  **Base Configuration**:
-    *   Targets the FSRDC research outputs listing page (`https://www.fsrdc.org/research-outputs/`).
-    *   Utilizes standard `requests` library headers to mimic a browser (`User-Agent`).
-    *   Defines output paths for successfully scraped data (`data/processed/scraped_data.csv`) and a log of failed attempts (`data/processed/failed_projects.csv`).
+    *   Targets multiple scholarly sources including NBER, IDEAS/RePEc, and arXiv.
+    *   Utilizes rotating user agents and optional proxies to prevent blocking.
+    *   Defines output paths for successfully scraped data (`data/processed/scraped_data.csv`), intermediate results (`data/processed/scraped_data_intermediate.csv`), and a log of failed attempts (`data/processed/failed_projects.csv`).
+    *   Loads FSRDC dataset names from the provided Excel file to use in relevance validation.
 
 2.  **Robust Request Handling**:
-    *   Employs an exponential backoff retry mechanism within `get_page_content` for handling transient network or server errors during page fetching.
-    *   Implements rate limiting (`time.sleep(1)`) between requests to individual project pages to avoid overwhelming the target server.
-    *   Includes detailed logging using Python's `logging` module to track the process and capture errors (`data/processed/web_scraping.log`).
-
-3.  **Targeted Content Extraction**:
-    *   Uses the `BeautifulSoup` library for parsing HTML structure.
-    *   Specifically targets and extracts predefined metadata fields from individual project pages within the `parse_project_page` function:
-        *   Project Title (`<h1 class="entry-title">`)
-        *   Abstract (`<div class="entry-content">`)
-        *   Authors (`<div class="authors">`)
-        *   Publication Year (`<span class="year">`)
-        *   Keywords (if available on the page, `<div class="keywords">`)
-
-### 1.2 Data Collection and Initial Filtering Process
-
-The scraper follows a two-stage process to identify and extract data:
-
-1.  **Identify Project Links**: The script first fetches the main research outputs listing page (`self.base_url`). It then parses this page to specifically identify links (`<a>` tags) that are marked with `class="project-link"`. This acts as an initial filter, focusing only on URLs designated by the FSRDC website as links to individual research output pages.
-
+    *   Employs an advanced retry strategy with exponential backoff via the `requests` library:
     ```python
-    # Within scrape_all method
-    content = self.get_page_content(self.base_url)
-    soup = BeautifulSoup(content, "html.parser")
-    # Filter 1: Select only links marked as project links
-    project_links = soup.find_all("a", class_="project-link")
+    # Set up retry strategy with exponential backoff
+    self.retry_strategy = Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+    )
+    self.adapter = HTTPAdapter(max_retries=self.retry_strategy)
+    self.session = requests.Session()
+    self.session.mount("https://", self.adapter)
+    self.session.mount("http://", self.mount
+    ```
+    *   Implements variable rate limiting using randomized delays to avoid detection:
+    ```python
+    def _get_random_delay(self) -> float:
+        """Get a random delay time (6-15 seconds)"""
+        delay = random.uniform(6, 15)
+        time.sleep(delay)
+        return delay
+    ```
+    *   Includes detailed logging using Python's `logging` module to track the process and capture errors (`logs/web_scraping.log`).
+    *   Implements checkpoint mechanisms to facilitate recovery from interruptions:
+    ```python
+    def _save_checkpoint(self, index: int) -> None:
+        """Save checkpoint, record processed index"""
+        try:
+            os.makedirs(os.path.dirname(self.checkpoint_file), exist_ok=True)
+            with open(self.checkpoint_file, 'w') as f:
+                f.write(str(index))
+            self.logger.info(f"Saved checkpoint at index {index}")
+        except Exception as e:
+            self.logger.error(f"Error saving checkpoint: {str(e)}")
     ```
 
-2.  **Extract Metadata from Project Pages**: For each identified project link, the script navigates to the corresponding URL and calls `parse_project_page`. This function attempts to extract the specific metadata fields (Title, Abstract, Authors, Year, Keywords) based on their expected HTML structure (tags and classes) as detailed in section 1.1.3.
+3.  **Multi-Source Content Extraction**:
+    *   Implements source-specific extraction methods for NBER, IDEAS/RePEc, and arXiv:
+    ```python
+    def _fetch_nber_papers(self, query: str, datasets: List[str]) -> List[Dict[str, Any]]:
+        """Get research papers from NBER (National Bureau of Economic Research)"""
+        # Implementation details...
+        
+    def _fetch_ideas_repec(self, query: str, datasets: List[str]) -> List[Dict[str, Any]]:
+        """Get research papers from IDEAS/RePEc"""
+        # Implementation details...
+        
+    def _fetch_arxiv_papers(self, query: str, datasets: List[str]) -> List[Dict[str, Any]]:
+        """Get research papers from arXiv"""
+        # Implementation details...
+    ```
+    *   Uses source-appropriate parsing strategies (HTML parsing for NBER/RePEc, XML parsing for arXiv).
+    *   Extracts metadata including titles, abstracts, authors, and URLs.
+
+### 1.2 Data Collection and FSRDC Validation Process
+
+The scraper follows a structured process to identify and validate relevant research outputs:
+
+1.  **Project Seed Loading**: The script first loads project metadata from `ProjectsAllMetadata.xlsx`, obtaining a list of PIs and project titles to use as search queries.
 
     ```python
-    # Within scrape_all method loop
-    for link in project_links:
-        project_url = link.get("href")
-        if project_url:
-            logger.info(f"Processing project: {project_url}")
-            # Filter 2: Extract specific fields based on HTML structure
-            project_data = self.parse_project_page(project_url)
-            if project_data:
-                all_projects.append(project_data)
-            time.sleep(1) # Rate limiting
+    # Read project information
+    df = pd.read_excel(excel_file, sheet_name='All Metadata')
+    pis = df['PI'].dropna().unique().tolist()
+    self.logger.info(f"Found {len(pis)} unique PIs in Excel file")
     ```
 
-### 1.3 FSRDC Relevance Validation Strategy (Downstream)
+2.  **Dataset Name Loading**: Loads the list of official FSRDC dataset names from the Excel file to use in the validation process:
 
-The project prompt requires rigorous validation to ensure collected outputs are genuinely related to FSRDC research. This involves programmatically checking for specific evidence within the research output's content based on five key criteria:
+    ```python
+    def _load_datasets(self, excel_file: str) -> List[str]:
+        """Load dataset names list from Datasets sheet"""
+        try:
+            df = pd.read_excel(excel_file, sheet_name='Datasets')
+            datasets = df['Data Name'].dropna().unique().tolist()
+            self.logger.info(f"Loaded {len(datasets)} unique dataset names")
+            return datasets
+        except Exception as e:
+            self.logger.error(f"Error loading datasets: {str(e)}")
+            return []
+    ```
 
-1.  **Acknowledgments**: Mentions of the Census Bureau, FSRDC, or a specific RDC (e.g., "Michigan RDC").
-2.  **Data Description**: References to restricted microdata sources commonly accessed via FSRDCs (e.g., Census data, IRS data, BEA data).
-3.  **Disclosure Review**: Statements confirming confidentiality reviews were performed (often required for FSRDC outputs).
-4.  **RDC Mentions**: Specific names or abbreviations of Research Data Centers.
-5.  **Dataset Mentions**: References to specific dataset names or identifiers known to be hosted within FSRDCs. Key datasets include (but are not limited to):
-    *   "Annual Survey of Manufactures"
-    *   "Census of Construction Industries"
-    *   "Census of Finance, Insurance, and Real Estate"
-    *   "Census of Agriculture"
-    *   "Census of Retail Trade"
-    *   "Census of Manufacturing"
-    *   (Consulting the provided FSRDC metadata Excel sheet, particularly the 'Datasets' tab, is crucial for a comprehensive list).
+3.  **Iterative Searching**: For each project in the Excel sheet, constructs a search query combining the PI name and project title, then searches multiple scholarly sources:
 
-Below is an illustrative example of how programmatic checks could be conceptualized to validate these criteria within the extracted text (e.g., the abstract obtained during scraping), even though the primary implementation and filtering based on these checks occur in later pipeline stages:
+    ```python
+    query = f"{project['PI']} {project['Title']}"
+    self.logger.info(f"Processing project {current_index+1}/{len(df)}: {project['Proj ID']}")
+    
+    # Get research outputs from multiple sources
+    nber_results = self._fetch_nber_papers(query, datasets)
+    ideas_repec_results = self._fetch_ideas_repec(query, datasets)
+    arxiv_results = self._fetch_arxiv_papers(query, datasets)
+    ```
+
+4.  **FSRDC Relevance Validation**: Each paper is checked against multiple criteria to assess FSRDC relevance:
+
+    ```python
+    def _check_criteria(self, text: str, datasets: List[str]) -> Dict[str, bool]:
+        """Check if text meets FSRDC criteria"""
+        results = {}
+        
+        if not text:
+            # If text is empty, no criteria are met
+            for criterion in self.fsrdc_criteria:
+                results[criterion] = False
+            results['dataset_mentions'] = False
+            return results
+        
+        # Check basic criteria
+        for criterion, patterns in self.fsrdc_criteria.items():
+            results[criterion] = any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+        
+        # Check dataset names
+        results['dataset_mentions'] = any(dataset.lower() in text.lower() for dataset in datasets)
+        
+        return results
+    ```
+
+    The criteria check includes:
+    *   **Acknowledgments**: Looks for terms like "Census Bureau", "FSRDC", etc.
+    *   **Data Descriptions**: Searches for references to data sources like "Census", "IRS", "BEA", etc.
+    *   **Disclosure Review**: Identifies mentions of "disclosure review", "confidentiality review", etc.
+    *   **RDC Mentions**: Detects specific RDC references like "Michigan RDC", "Texas RDC", etc.
+    *   **Dataset Mentions**: Verifies if any of the official FSRDC dataset names appear in the text.
+
+5.  **Project-Paper Association**: For each found paper that meets at least one FSRDC criterion, project metadata is linked to create a complete record:
+
+    ```python
+    # Merge results and add project information
+    project_results = []
+    for result in nber_results + ideas_repec_results + arxiv_results:
+        result.update({
+            'project_id': project['Proj ID'],
+            'project_pi': project['PI'],
+            'project_rdc': project['RDC'],
+            'project_status': project['Status'],
+            'project_start_year': project['Start Year'],
+            'project_end_year': project['End Year'],
+            'project_abstract': project['Abstract'] if 'Abstract' in project else None
+        })
+        project_results.append(result)
+    ```
+
+### 1.3 FSRDC Relevance Validation Implementation
+
+The project implements a comprehensive programmatic validation strategy to ensure collected outputs are genuinely related to FSRDC research. This involves checking for specific evidence within research content based on five key criteria:
 
 ```python
-def check_fsrdc_criteria_in_text(text_content):
-    """Illustrative function to check for FSRDC criteria keywords in text."""
-    text_lower = text_content.lower()
-    
-    # Define keywords related to the 5 criteria
-    acknowledgment_kws = ["census bureau", "fsrdc", "research data center", "rdc", "michigan rdc"]
-    data_desc_kws = ["restricted microdata", "confidential data", "census data", "irs data", "bea data"]
-    disclosure_kws = ["disclosure review", "confidentiality review"]
-    rdc_mention_kws = ["rdc", "texas rdc", "new york rdc"] # Example RDCs
-    dataset_kws = ["annual survey of manufactures", "census of construction", "lbd", "lehd"]
-    
-    criteria_met = {
-        "acknowledgments": False,
-        "data_description": False,
-        "disclosure_review": False,
-        "rdc_mentions": False,
-        "dataset_mentions": False
-    }
-    
-    # Check each category
-    if any(kw in text_lower for kw in acknowledgment_kws):
-        criteria_met["acknowledgments"] = True
-    if any(kw in text_lower for kw in data_desc_kws):
-        criteria_met["data_description"] = True
-    if any(kw in text_lower for kw in disclosure_kws):
-        criteria_met["disclosure_review"] = True
-    if any(kw in text_lower for kw in rdc_mention_kws):
-        criteria_met["rdc_mentions"] = True
-    if any(kw in text_lower for kw in dataset_kws):
-        criteria_met["dataset_mentions"] = True
-        
-    # Return which criteria were met (e.g., as boolean flags)
-    return criteria_met
-
-# Example Usage (Conceptual - within a hypothetical enhanced scraper):
-# extracted_abstract = project_data.get("abstract", "")
-# validation_flags = check_fsrdc_criteria_in_text(extracted_abstract)
-# project_data.update(validation_flags) # Add flags to the scraped data
+# FSRDC criteria defined within WebScraper __init__
+self.fsrdc_criteria = {
+    'acknowledgments': [
+        r'Census Bureau',
+        r'FSRDC',
+        r'Federal Statistical Research Data Center'
+    ],
+    'data_descriptions': [
+        r'Census',
+        r'IRS',
+        r'BEA',
+        r'microdata'
+    ],
+    'disclosure_review': [
+        r'disclosure review',
+        r'confidentiality review',
+        r'disclosure avoidance'
+    ],
+    'rdc_mentions': [
+        r'Michigan RDC',
+        r'Texas RDC',
+        r'California RDC',
+        r'New York RDC'
+    ]
+}
 ```
 
-**Important Clarification**: The initial web scraping step (`web_scraping.py`) focuses on efficiently gathering *foundational metadata* (title, abstract, authors, etc.) where readily available in the primary HTML structure. It *does not* perform the detailed keyword/content analysis against the five FSRDC relevance criteria listed above during the scraping phase itself.
+These regex patterns are applied to the paper's abstract and title to identify FSRDC-related content. Additionally, the system checks for mentions of specific dataset names loaded from the Excel file:
 
-The **programmatic validation** using text processing (string methods, potentially regex) to search for keywords related to acknowledgments, specific datasets, data sources, RDC mentions, and disclosure review statements within the collected text (primarily abstracts and potentially full text if acquired later) happens in **subsequent stages of the data processing pipeline** (specifically within `src/data_processing.py` and potentially influenced by enrichments from `src/api_integration.py`). The boolean flags mentioned in the EDA (`acknowledgments`, `data_descriptions`, etc.) are likely generated during these later validation steps, not by the initial scraper. The goal of the scraper is to provide the raw material (like abstracts) for this downstream validation. **Please refer to Section 3.3 for code examples demonstrating the FSRDC relevance filtering logic applied during data processing.**
+```python
+# Check dataset names
+results['dataset_mentions'] = any(dataset.lower() in text.lower() for dataset in datasets)
+```
+
+Papers that satisfy at least one criterion are retained for further processing, while metadata flags are set to indicate which specific criteria were met.
 
 ### 1.4 Efficiency and Error Handling
 
 Several measures ensure the scraper runs efficiently and handles errors gracefully:
 
-1.  **Efficiency**:
-    *   **Targeted Extraction**: Only specific, predefined fields are extracted, avoiding parsing unnecessary page content.
-    *   **Rate Limiting**: A fixed delay (`time.sleep(1)`) is introduced between requests to individual project pages to prevent overloading the FSRDC server and potential IP blocks. While effective, this inherently limits the maximum scraping speed. This rate limiting means the scraper processes approximately 50-100 project pages per hour, depending on server response times and page complexity. Caching responses could be a future enhancement but was not implemented in this version.
+1.  **Network Robustness**:
+    *   **User-Agent Rotation**: Randomizes the browser identifier to reduce detection risk.
+    ```python
+    def _get_random_user_agent(self) -> str:
+        """Get a random user agent"""
+        return random.choice(self.user_agents)
+    ```
+    *   **Optional Proxy Support**: Can route requests through different proxies to distribute request origins.
+    *   **Retry with Backoff**: Automatically retries failed requests with increasing delays.
 
-2.  **Error Handling**:
-    *   **Network Robustness**: The `get_page_content` function attempts requests up to 3 times with exponential backoff (1, 2, 4 seconds delay) to handle temporary network issues or server-side glitches. It checks HTTP status codes and raises errors for persistent issues (e.g., 404 Not Found).
-    *   **Parsing Robustness**: The `parse_project_page` function uses a `try...except` block to catch errors during HTML parsing or content extraction for a specific page. If an error occurs, it logs the problematic URL and the error message.
-    *   **Failure Logging**: URLs that fail during parsing are recorded in `data/processed/failed_projects.csv`. This allows for later manual inspection or attempts to re-process these specific links, ensuring data loss is minimized and traceable. The main scraping process continues even if individual pages fail.
-    *   **Logging**: Comprehensive logging provides visibility into the scraping progress, successful extractions, and any errors encountered.
+2.  **Progress Tracking and Recovery**:
+    *   **Checkpointing**: Saves progress every 10 projects to enable resuming after interruptions.
+    *   **Intermediate Results**: Stores partial results throughout the scraping process.
+    ```python
+    # Save intermediate results and checkpoint every 10 projects
+    if (current_index + 1) % 10 == 0:
+        self._save_intermediate_results(results)
+        self._save_checkpoint(current_index + 1)
+        self._save_failed_projects()
+    ```
+    *   **Failed Projects Tracking**: Records projects that fail to produce results or encounter errors.
+    ```python
+    self.failed_projects.append({
+        'project_id': project['Proj ID'],
+        'project_pi': project['PI'],
+        'project_title': project['Title'],
+        'reason': 'No research outputs found'
+    })
+    ```
+
+3.  **Rate Limiting**:
+    *   **Random Delays**: Varies the time between requests (6-15 seconds) to prevent detection of automated access patterns.
+    *   **Per-Result Delays**: Adds pauses after processing each search result to mimic natural browsing behavior.
+
+4.  **Exception Handling**:
+    *   **Granular Error Catching**: Each phase of the scraping process is wrapped in try-except blocks to isolate failures.
+    *   **Comprehensive Logging**: Detailed error messages are captured in the log file for diagnosis.
+    *   **Graceful Degradation**: If one source fails (e.g., NBER), the system continues with other sources (e.g., RePEc, arXiv).
+    ```python
+    try:
+        nber_results = self._fetch_nber_papers(query, datasets)
+    except Exception as e:
+        self.logger.error(f"Failed to fetch NBER papers: {str(e)}")
+        nber_results = []
+    ```
 
 ### 1.5 Integration with Processing Pipeline
 
 The primary output of this stage is `data/processed/scraped_data.csv`. This structured dataset serves as a crucial input for the subsequent stages of the project pipeline:
 
-1.  **Data Processing (`data_processing.py`)**: The scraped data undergoes cleaning, standardization, and crucially, **deduplication** against existing datasets (like the initial `ResearchOutputs.xlsx` or `cleaned_biblio.csv`) using techniques like fuzzy matching – serving as a secondary filtering step – and **FSRDC relevance validation** based on the criteria outlined in section 1.3.
-2.  **API Integration (`api_integration.py`)**: The scraped data can potentially be used to query APIs like OpenAlex to enrich records with additional metadata (DOIs, citation counts, standardized affiliations) not available directly on the FSRDC website.
+1.  **Data Processing (`data_processing.py`)**: The scraped data undergoes cleaning, standardization, and crucially, **deduplication** against existing datasets (like the initial `ResearchOutputs.xlsx` or `cleaned_biblio.csv`) using techniques like fuzzy matching.
+2.  **API Integration (`api_integration.py`)**: The scraped data can potentially be used to query APIs like OpenAlex to enrich records with additional metadata (DOIs, citation counts, standardized affiliations) not available directly on the source websites.
 3.  **Final Analysis**: The validated and enriched data contributes to the final dataset used for graph construction, network analysis, and visualization.
 
 ### 1.6 Results and Impact
 
 The web scraping component successfully:
 
-1.  **Data Collection**: Extracts foundational metadata (titles, abstracts, authors, years, keywords) from the public-facing FSRDC research outputs page. This initial scraping process yielded approximately 900+ potential research output records before downstream filtering and validation.
-2.  **Structured Input**: Provides structured data (`scraped_data.csv`) essential for the downstream processing, validation, and enrichment pipeline stages.
-3.  **Quality Assurance**: Implements robust error handling and logs failed attempts (`failed_projects.csv`), enabling diagnostics and potential recovery, contributing to the overall data quality effort.
+1.  **Multi-Source Data Collection**: Extracts foundational metadata (titles, abstracts, authors) from three major scholarly sources (NBER, IDEAS/RePEc, arXiv), providing broader coverage than a single-source approach.
+2.  **FSRDC Validation**: Applies programmatic criteria checking to identify papers likely related to FSRDC data usage.
+3.  **PI-Paper Association**: Links papers to the originating FSRDC projects and PIs, establishing provenance.
+4.  **Structured Input**: Provides structured data (`scraped_data.csv`) essential for the downstream processing, validation, and enrichment pipeline stages.
+5.  **Quality Assurance**: Implements robust error handling and logs failed attempts (`failed_projects.csv`), enabling diagnostics and potential recovery, contributing to the overall data quality effort.
 
-This implementation provides a reliable starting point for discovering potential FSRDC research outputs, feeding essential raw data into the subsequent stages where rigorous validation and analysis occur. The project prompt also notes a characteristic of FSRDC outputs: the likely presence of a Principal Investigator (PI) or researcher listed in the provided `ProjectsAllMetadata.xlsx` file among the co-authors. While programmatically verifying this link for every scraped output presents significant challenges due to variations in author name formatting across publications and datasets, our subsequent validation steps (detailed in Sections 2 and 3), which focus on content analysis through keyword matching (including agency names, specific datasets, and FSRDC terminology) and uniqueness checks, serve as the primary programmatic methods for ensuring the relevance and validity of the research outputs identified as FSRDC-related. Outputs passing these content-based checks are strongly expected to originate from or be closely related to FSRDC projects and their associated personnel.
+This implementation provides a reliable multi-source strategy for discovering potential FSRDC research outputs, feeding essential raw data into the subsequent stages where rigorous validation and analysis occur. The multiple source approach improves coverage compared to single-source methods, while the validation criteria ensure relevance to FSRDC research.
 
 ## 2. API Integration
 
